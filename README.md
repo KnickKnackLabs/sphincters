@@ -1,51 +1,87 @@
+<div align="center">
+
+<p align="center"><img src="assets/hero.jpg" alt="A tired cartoon sphincter mascot" width="360" /></p>
+
 # sphincters
 
-**Run one short-lived worker, then leave the evidence behind.**
+**Run one bounded worker, then leave the evidence behind.**
 
-`sphincters` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded worker run with a prompt, launch profile, logs, transcript, and machine-readable result JSON.
+A sphincter is a boundary. This one tightens around a prompt, a launch profile, and a single headless session so the parent process gets a clean artifact trail instead of a mysterious background swarm.
+
+![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
+[![tests: 14 passing](https://img.shields.io/badge/tests-14%20passing-brightgreen?style=flat)](test/)
+![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
+![release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-orange?style=flat)
+
+</div>
+
+<br />
 
 ## Quick start
 
 ```bash
-mise trust
-mise install
+# Install the latest released sphincter
+shiv install sphincters
 
-# No model call; writes prompt/log/result files only.
-mise run run --dry-run --model fake/model --prompt "Say hello" --json
-mise run ping --dry-run --model fake/model --json
-mise run bench --dry-run --model fake/model --count 3 --parallel 2 --json
+# Check the plumbing without launching a model
+sphincters ping --dry-run --model fake/model --json
 
-mise run test
-mise run lint
-```
-
-## Run contract
-
-A run creates an output directory containing:
-
-- the copied prompt file;
-- the profile launch spec;
-- the generated system prompt, when the profile provides one;
-- `sessions new`, `sessions wake`, and `sessions read` logs;
-- a transcript file;
-- a result JSON file with paths, profile metadata, timestamps, and return codes.
-
-Relative `--prompt-file`, `--cwd`, `--out-dir`, and `--result-file` paths resolve against `SPHINCTERS_CALLER_PWD` when installed through `shiv`, or the current directory during direct `mise run` use.
-
-```bash
-mise run run \
+# Run one bounded worker
+sphincters run \
   --profile plain \
   --model openai-codex/gpt-5.5 \
   --prompt-file task.md \
-  --out-dir exports/first-drone \
+  --out-dir exports/first-run \
   --json
+
+# Repeat the smallest smoke test
+sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 ```
 
-The built-in `plain` profile scrubs ambient identity and common side-effect credentials before waking. Plain drones should draft or report unless the prompt and environment deliberately permit side effects.
+## What it is
 
-## Profiles
+`sphincters` is a small runner for short-lived workers. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. Profiles only describe how the worker should be launched.
 
-Profiles are executable launch adapters. `mise run run --profile <name>` finds an executable under `profiles/<name>` or under `SPHINCTERS_PROFILE_PATH`, runs it, and expects JSON on stdout:
+```
+                 sphincters run
+                       │
+                       ▼
+             ┌──────────────────┐
+             │ launch profile   │  cwd / system prompt / env scrub / meta
+             └─────────┬────────┘
+                       │ profile.json
+                       ▼
+  prompt.md ──▶ sessions new ──▶ sessions wake --headless ──▶ sessions read
+                       │                    │                    │
+                       └────────────────────┴────────────────────┘
+                                            ▼
+                 logs + transcript + result.json
+```
+
+The important distinction: the core abstraction is not "agent." It is worker/profile/session. A profile may launch an agent identity under the hood later, but the runner should not care.
+
+## Artifacts, not vibes
+
+Every run writes a directory that a human or parent process can inspect. If a worker failed, the logs are already separated by phase. If it succeeded, the transcript and result JSON point at each other.
+
+```
+exports/first-run/
+├── sphincters-run-plain-...prompt.md
+├── sphincters-run-plain-...profile.json
+├── plain-system-prompt.md
+├── sphincters-run-plain-...new.log
+├── sphincters-run-plain-...wake.log
+├── sphincters-run-plain-...read.log
+├── sphincters-run-plain-...transcript.txt
+└── sphincters-run-plain-...result.json
+```
+
+## Profiles are launch adapters
+
+A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking.
+
+<details>
+<summary><b>Profile JSON contract</b></summary>
 
 ```json
 {
@@ -54,44 +90,52 @@ Profiles are executable launch adapters. `mise run run --profile <name>` finds a
   "cwd": "/tmp/sphincters-run/cwd",
   "system_prompt_file": "/tmp/sphincters-run/plain-system-prompt.md",
   "identity": {"mode": "skip"},
-  "unset_env": ["GH_TOKEN", "GITHUB_TOKEN"],
+  "unset_env": ["GH_TOKEN", "GITHUB_TOKEN", "CHAT_IDENTITY"],
   "meta": {"drone.profile": "plain"}
 }
 ```
 
-`sphincters run` owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Profiles only prepare launch context: cwd, optional system prompt, env scrubbing, and metadata.
+</details>
 
-## Ping
+## Three useful motions
 
-`mise run ping` is the minimal smoke-test wrapper. With no prompt, it generates a deterministic `DRONE_ACK <session>` prompt, calls `run`, then writes a `sphincters-ping` summary JSON that embeds the underlying run result and records total elapsed milliseconds.
+- **run** — one prompt through one profile into one session, with logs and transcript.
+- **ping** — a deterministic `DRONE_ACK <session>` smoke test wrapped around `run`.
+- **bench** — repeated `ping` runs with `--count` / `--parallel` and timing stats. A harness check, not a swarm coordinator.
 
-```bash
-mise run ping --model openai-codex/gpt-5.5 --json
+## Use from mise
+
+For repos that want the released command on PATH, declare the shiv package. `latest` means the newest semver release, not default-branch code.
+
+```toml
+[plugins]
+shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
+
+[tools]
+"shiv:sphincters" = "latest"
 ```
 
-Use `--dry-run` to verify file/result plumbing without launching a model.
-
-## Bench
-
-`mise run bench` repeats `ping` and writes a `sphincters-bench` summary with success counts and timing stats. It can run pings in small parallel batches:
+## Development
 
 ```bash
-mise run bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
-```
+gh repo clone KnickKnackLabs/sphincters
+cd sphincters
+mise trust
+mise install
 
-Use `--dry-run` before turning up count or parallelism. Bench is a harness check, not a swarm coordinator.
-
-## Codebase health
-
-This repo declares `shiv:codebase` and keeps convention checks local:
-
-```bash
+mise run test
 mise run lint
-mise exec -- codebase pre-commit --check
+mise exec -- readme build --check
 ```
 
-The current lint set covers mise settings, BATS helper/task shape, `$MISE_CONFIG_ROOT` scope, `|| true`, and shellcheck.
+This README is generated from `README.tsx`. The test count and release badge are computed when the README is built.
 
-## Provenance
+---
 
-This starts from `~/agents/ikma/home/.mise/tasks/drone-lab`, especially the one-shot runner and plain profile. The standalone version keeps the useful parts and drops home-specific assumptions as the interface stabilizes.
+<div align="center">
+
+**Keep the boundary tight. Let the evidence out.**
+
+[sessions](https://github.com/KnickKnackLabs/sessions) provides the transcript machinery; [shiv](https://github.com/KnickKnackLabs/shiv) installs the released command.
+
+</div>

@@ -11,6 +11,7 @@ bats = "1.13.0"
 jq = "1.8.1"
 usage = "1"
 "shiv:codebase" = "0.2.0"
+"shiv:readme" = "latest"
 # Track latest sessions while its system-prompt handoff surface is still moving.
 "shiv:sessions" = "latest"
 
