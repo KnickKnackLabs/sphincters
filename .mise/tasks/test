@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Run BATS tests"
+#USAGE arg "[args]" var=#true help="Optional bats args"
+set -euo pipefail
+
+ARGS=()
+if [ -n "${usage_args:-}" ]; then
+  while IFS= read -r arg; do
+    ARGS+=("$arg")
+  done < <(printf '%s' "$usage_args" | xargs printf '%s\n')
+fi
+
+exec bats "${ARGS[@]+"${ARGS[@]}"}" test

@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+#MISE description="Run one bounded drone session and write logs/result JSON"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--prompt <text>" default="" help="Prompt text (required unless --prompt-file is given)"
+#USAGE flag "--prompt-file <file>" default="" help="Prompt file (overrides --prompt)"
+#USAGE flag "--cwd <dir>" default="" help="Working directory for the spawned session (default: scratch cwd)"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-run-*)"
+#USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
+#USAGE flag "--result-file <file>" default="" help="Where to write result JSON (default: <out-dir>/<session>.result.json)"
+#USAGE flag "--json" default=#false help="Print result JSON to stdout"
+#USAGE flag "--dry-run" default=#false help="Prepare files/result without launching sessions"
+set -euo pipefail
+
+source "$MISE_CONFIG_ROOT/lib/drones.sh"
+
+model=$(drones_resolve_model "$usage_model")
+stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+base="drones-run-${stamp}-$$"
+out_dir="${usage_out_dir:-/tmp/$base}"
+name="${usage_name:-$base}"
+result_file="${usage_result_file:-$out_dir/$name.result.json}"
+cwd="${usage_cwd:-$out_dir/cwd}"
+
+mkdir -p "$out_dir" "$cwd"
+
+prompt_file="$out_dir/$name.prompt.md"
+if [ -n "$usage_prompt_file" ]; then
+  if [ ! -f "$usage_prompt_file" ]; then
+    echo "error: prompt file not found: $usage_prompt_file" >&2
+    exit 2
+  fi
+  cp "$usage_prompt_file" "$prompt_file"
+elif [ -n "$usage_prompt" ]; then
+  printf '%s\n' "$usage_prompt" > "$prompt_file"
+else
+  echo "error: must provide --prompt or --prompt-file" >&2
+  exit 2
+fi
+
+system_prompt_file="$out_dir/$name.system.md"
+drones_plain_system_prompt > "$system_prompt_file"
+new_log="$out_dir/$name.new.log"
+wake_log="$out_dir/$name.wake.log"
+read_log="$out_dir/$name.read.log"
+transcript_file="$out_dir/$name.transcript.txt"
+started_at=$(drones_now_iso)
+
+new_rc=-1
+wake_rc=-1
+read_rc=-1
+
+if [ "$usage_dry_run" = "true" ]; then
+  new_rc=0
+  wake_rc=0
+  read_rc=0
+  printf 'dry run: sessions new skipped\n' > "$new_log"
+  printf 'dry run: sessions wake skipped\n' > "$wake_log"
+  printf 'dry run: sessions read skipped\n' > "$read_log"
+  printf 'dry run transcript placeholder\n' > "$transcript_file"
+else
+  if sessions new "$name" \
+    --cwd "$cwd" \
+    --meta "drone.tool=drones" \
+    --meta "drone.out_dir=$out_dir" \
+    >"$new_log" 2>&1; then
+    new_rc=0
+  else
+    new_rc=$?
+  fi
+
+  if [ "$new_rc" -eq 0 ]; then
+    prompt=$(cat "$prompt_file")
+    system_prompt=$(cat "$system_prompt_file")
+    wake_cmd=(
+      sessions wake "$name"
+      --headless
+      --model "$model"
+      --message "$prompt"
+      --meta "wake.purpose=drones-run"
+    )
+    if env \
+      -u DISPATCH_CONTEXT \
+      -u GIT_AUTHOR_NAME \
+      -u GIT_AUTHOR_EMAIL \
+      -u GIT_COMMITTER_NAME \
+      -u GIT_COMMITTER_EMAIL \
+      -u GH_TOKEN \
+      -u GITHUB_TOKEN \
+      -u CHAT_IDENTITY \
+      -u SHIMMER_OS_USER \
+      AGENT_IDENTITY="$system_prompt" \
+      "${wake_cmd[@]}" \
+      >"$wake_log" 2>&1; then
+      wake_rc=0
+    else
+      wake_rc=$?
+    fi
+    unset prompt system_prompt
+  fi
+
+  if [ "$new_rc" -eq 0 ]; then
+    if sessions read "$name" >"$transcript_file" 2>"$read_log"; then
+      read_rc=0
+    else
+      read_rc=$?
+    fi
+  fi
+fi
+
+finished_at=$(drones_now_iso)
+
+jq -n \
+  --arg type "drones-run" \
+  --arg session "$name" \
+  --arg model "$model" \
+  --arg out_dir "$out_dir" \
+  --arg cwd "$cwd" \
+  --arg prompt_file "$prompt_file" \
+  --arg system_prompt_file "$system_prompt_file" \
+  --arg result_file "$result_file" \
+  --arg transcript_file "$transcript_file" \
+  --arg started_at "$started_at" \
+  --arg finished_at "$finished_at" \
+  --argjson dry_run "$usage_dry_run" \
+  --argjson new_rc "$new_rc" \
+  --argjson wake_rc "$wake_rc" \
+  --argjson read_rc "$read_rc" \
+  '{type:$type, session:$session, model:$model, dry_run:$dry_run, cwd:$cwd, out_dir:$out_dir, files:{prompt:$prompt_file, system_prompt:$system_prompt_file, result:$result_file, transcript:$transcript_file}, started_at:$started_at, finished_at:$finished_at, rc:{new:$new_rc, wake:$wake_rc, read:$read_rc}}' \
+  > "$result_file"
+
+if [ "$usage_json" = "true" ]; then
+  cat "$result_file"
+else
+  printf '%s\n' '== drones:run =='
+  printf '  session:    %s\n' "$name"
+  printf '  model:      %s\n' "$model"
+  printf '  dry run:    %s\n' "$usage_dry_run"
+  printf '  out:        %s\n' "$out_dir"
+  printf '  result:     %s\n' "$result_file"
+  printf '  transcript: %s\n' "$transcript_file"
+fi
+
+if [ "$new_rc" -ne 0 ]; then
+  exit "$new_rc"
+elif [ "$wake_rc" -ne 0 ]; then
+  exit "$wake_rc"
+elif [ "$read_rc" -ne 0 ]; then
+  exit "$read_rc"
+fi
