@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #MISE description="Run one bounded drone session and write logs/result JSON"
 #USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
-#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use SPHINCTERS_MODEL or SESSIONS_DEFAULT_MODEL"
 #USAGE flag "--prompt <text>" default="" help="Prompt text (required unless --prompt-file is given)"
 #USAGE flag "--prompt-file <file>" default="" help="Prompt file (overrides --prompt)"
 #USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
-#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-run-*)"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/sphincters-run-*)"
 #USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
 #USAGE flag "--result-file <file>" default="" help="Where to write result JSON (default: <out-dir>/<session>.result.json)"
 #USAGE flag "--json" default=#false help="Print result JSON to stdout"
@@ -20,7 +20,7 @@ profile="$usage_profile"
 model=$(drones_resolve_model "$usage_model")
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 safe_profile=$(printf '%s' "$profile" | drones_safe_name)
-base="drones-run-${safe_profile}-${stamp}-$$"
+base="sphincters-run-${safe_profile}-${stamp}-$$"
 out_dir_arg="${usage_out_dir:-/tmp/$base}"
 out_dir=$(drones_resolve_path "$out_dir_arg")
 name="${usage_name:-$base}"
@@ -62,11 +62,17 @@ DRONES_PROFILE_SUFFIX=""
 drones_profile_executable "$profile"
 profile_spec_file="$out_dir/$name.profile.json"
 if (
-  export DRONES_PROFILE="$profile"
-  export DRONES_PROFILE_SUFFIX
-  export DRONES_OUT_DIR="$out_dir"
-  export DRONES_CWD="$requested_cwd"
-  export DRONES_MODEL="$model"
+  export SPHINCTERS_PROFILE="$profile"
+  export SPHINCTERS_PROFILE_SUFFIX="$DRONES_PROFILE_SUFFIX"
+  export SPHINCTERS_OUT_DIR="$out_dir"
+  export SPHINCTERS_CWD="$requested_cwd"
+  export SPHINCTERS_MODEL="$model"
+  # Backward-compatible aliases for older local profile experiments.
+  export DRONES_PROFILE="$SPHINCTERS_PROFILE"
+  export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
+  export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
+  export DRONES_CWD="$SPHINCTERS_CWD"
+  export DRONES_MODEL="$SPHINCTERS_MODEL"
   "$DRONES_PROFILE_EXEC"
 ) > "$profile_spec_file"; then
   :
@@ -126,7 +132,7 @@ else
   new_cmd=(
     sessions new "$name"
     --cwd "$cwd"
-    --meta "drone.tool=drones"
+    --meta "drone.tool=sphincters"
     --meta "drone.profile=$profile"
     --meta "drone.kind=$profile_kind"
     --meta "drone.subject=$profile_subject"
@@ -151,7 +157,7 @@ else
       --headless
       --model "$model"
       --message "$prompt"
-      --meta "wake.purpose=drones-run"
+      --meta "wake.purpose=sphincters-run"
       --meta "drone.profile=$profile"
       --meta "drone.kind=$profile_kind"
     )
@@ -196,7 +202,7 @@ trap 'rm -f "$result_tmp"' EXIT
 
 jq -n \
   --slurpfile spec "$profile_spec_file" \
-  --arg type "drones-run" \
+  --arg type "sphincters-run" \
   --arg session "$name" \
   --arg model "$model" \
   --arg caller_pwd "$caller_pwd" \
@@ -256,7 +262,7 @@ fi
 if [ "$usage_json" = "true" ]; then
   cat "$result_file"
 else
-  printf '%s\n' '== drones:run =='
+  printf '%s\n' '== sphincters:run =='
   printf '  session:    %s\n' "$name"
   printf '  profile:    %s (%s)\n' "$profile" "$profile_kind"
   printf '  subject:    %s\n' "$profile_subject"
@@ -269,7 +275,7 @@ else
 fi
 
 if [ "$final_rc" -ne 0 ]; then
-  echo "error: drones run failed (rc=$final_rc); logs are in $out_dir" >&2
+  echo "error: sphincters run failed (rc=$final_rc); logs are in $out_dir" >&2
   if [ -s "$wake_log" ]; then
     echo "--- wake log tail ---" >&2
     tail -40 "$wake_log" >&2

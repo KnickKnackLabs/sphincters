@@ -6,29 +6,29 @@ load test_helper
 
 @test "run --dry-run writes result JSON" {
   out_dir="$BATS_TEST_TMPDIR/run"
-  run drones run --dry-run --model fake/model --prompt "hello" --out-dir "$out_dir" --json
+  run sphincters run --dry-run --model fake/model --prompt "hello" --out-dir "$out_dir" --json
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '.type == "drones-run" and .dry_run == true and .profile.kind == "plain" and .rc.wake == 0' >/dev/null
+  echo "$output" | jq -e '.type == "sphincters-run" and .dry_run == true and .profile.kind == "plain" and .rc.wake == 0' >/dev/null
   result=$(echo "$output" | jq -r '.files.result')
   spec=$(echo "$output" | jq -r '.profile_spec_file')
   [ -f "$result" ]
   [ -f "$spec" ]
 }
 
-@test "run resolves relative paths against DRONES_CALLER_PWD" {
+@test "run resolves relative paths against SPHINCTERS_CALLER_PWD" {
   caller="$BATS_TEST_TMPDIR/caller"
   mkdir -p "$caller"
   printf 'prompt from caller\n' > "$caller/prompt.md"
 
-  export DRONES_CALLER_PWD="$caller"
-  run drones run \
+  export SPHINCTERS_CALLER_PWD="$caller"
+  run sphincters run \
     --dry-run \
     --model fake/model \
     --prompt-file prompt.md \
     --out-dir out \
     --result-file results/result.json \
     --json
-  unset DRONES_CALLER_PWD
+  unset SPHINCTERS_CALLER_PWD
 
   [ "$status" -eq 0 ]
   echo "$output" | jq -e \
@@ -40,23 +40,23 @@ load test_helper
   [ -f "$caller/results/result.json" ]
 }
 
-@test "run can resolve model from DRONES_MODEL" {
-  export DRONES_MODEL=fake/from-env
-  run drones run --dry-run --prompt "hello" --json
-  unset DRONES_MODEL
+@test "run can resolve model from SPHINCTERS_MODEL" {
+  export SPHINCTERS_MODEL=fake/from-env
+  run sphincters run --dry-run --prompt "hello" --json
+  unset SPHINCTERS_MODEL
 
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.model == "fake/from-env"' >/dev/null
 }
 
-@test "run can use an external profile from DRONES_PROFILE_PATH" {
+@test "run can use an external profile from SPHINCTERS_PROFILE_PATH" {
   profile_dir="$BATS_TEST_TMPDIR/profiles"
   mkdir -p "$profile_dir"
   cat > "$profile_dir/custom" <<'PROFILE'
 #!/usr/bin/env bash
 set -euo pipefail
-cwd="${DRONES_CWD:-$DRONES_OUT_DIR/custom-cwd}"
-system_prompt_file="$DRONES_OUT_DIR/custom-system.md"
+cwd="${SPHINCTERS_CWD:-$SPHINCTERS_OUT_DIR/custom-cwd}"
+system_prompt_file="$SPHINCTERS_OUT_DIR/custom-system.md"
 mkdir -p "$cwd"
 printf 'custom system prompt\n' > "$system_prompt_file"
 jq -n \
@@ -66,9 +66,9 @@ jq -n \
 PROFILE
   chmod +x "$profile_dir/custom"
 
-  export DRONES_PROFILE_PATH="$profile_dir"
-  run drones run --dry-run --profile custom --model fake/model --prompt "hello" --json
-  unset DRONES_PROFILE_PATH
+  export SPHINCTERS_PROFILE_PATH="$profile_dir"
+  run sphincters run --dry-run --profile custom --model fake/model --prompt "hello" --json
+  unset SPHINCTERS_PROFILE_PATH
 
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.profile.name == "custom" and .profile.kind == "test" and .profile_spec.meta["fixture.profile"] == "custom"' >/dev/null
@@ -77,7 +77,7 @@ PROFILE
 }
 
 @test "run rejects unknown profiles" {
-  run drones run --dry-run --profile missing --model fake/model --prompt "hello" --json
+  run sphincters run --dry-run --profile missing --model fake/model --prompt "hello" --json
   [ "$status" -eq 2 ]
   [[ "$output" == *"profile executable not found: missing"* ]]
 }
@@ -91,22 +91,22 @@ printf '{}\n'
 PROFILE
   chmod +x "$profile_dir/bad"
 
-  export DRONES_PROFILE_PATH="$profile_dir"
-  run drones run --dry-run --profile bad --model fake/model --prompt "hello" --json
-  unset DRONES_PROFILE_PATH
+  export SPHINCTERS_PROFILE_PATH="$profile_dir"
+  run sphincters run --dry-run --profile bad --model fake/model --prompt "hello" --json
+  unset SPHINCTERS_PROFILE_PATH
 
   [ "$status" -eq 2 ]
   [[ "$output" == *"profile emitted invalid launch spec"* ]]
 }
 
 @test "run rejects unsafe session names" {
-  run drones run --dry-run --model fake/model --prompt "hello" --name "../bad" --json
+  run sphincters run --dry-run --model fake/model --prompt "hello" --name "../bad" --json
   [ "$status" -eq 2 ]
   [[ "$output" == *"invalid session name"* ]]
 }
 
 @test "run requires a prompt" {
-  run drones run --dry-run --model fake/model --json
+  run sphincters run --dry-run --model fake/model --json
   [ "$status" -eq 2 ]
   [[ "$output" == *"must provide --prompt or --prompt-file"* ]]
 }

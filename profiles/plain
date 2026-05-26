@@ -2,9 +2,13 @@
 # Emit launch spec for a stateless/plain drone profile.
 set -euo pipefail
 
-out_dir="${DRONES_OUT_DIR:?DRONES_OUT_DIR required}"
-profile="${DRONES_PROFILE:-plain}"
-cwd="${DRONES_CWD:-$out_dir/cwd}"
+out_dir="${SPHINCTERS_OUT_DIR:-${DRONES_OUT_DIR:-}}"
+if [ -z "$out_dir" ]; then
+  echo "error: SPHINCTERS_OUT_DIR required" >&2
+  exit 2
+fi
+profile="${SPHINCTERS_PROFILE:-${DRONES_PROFILE:-plain}}"
+cwd="${SPHINCTERS_CWD:-${DRONES_CWD:-$out_dir/cwd}}"
 system_prompt_file="$out_dir/plain-system-prompt.md"
 
 mkdir -p "$cwd"

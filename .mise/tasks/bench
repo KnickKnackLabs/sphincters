@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #MISE description="Run repeated drone pings, optionally in small parallel batches"
 #USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
-#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use SPHINCTERS_MODEL or SESSIONS_DEFAULT_MODEL"
 #USAGE flag "--count <n>" default="3" help="Number of pings to run"
 #USAGE flag "--parallel <n>" default="1" help="How many pings to run concurrently per batch"
 #USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
-#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-bench-*)"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/sphincters-bench-*)"
 #USAGE flag "--prompt <text>" default="" help="Prompt text passed to each ping (default: ping's DRONE_ACK prompt)"
 #USAGE flag "--prompt-file <file>" default="" help="Prompt file passed to each ping (overrides --prompt)"
 #USAGE flag "--json" default=#false help="Print summary JSON to stdout"
@@ -25,7 +25,7 @@ drones_require_positive_int "parallel" "$parallel"
 
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 safe_profile=$(printf '%s' "$profile" | drones_safe_name)
-out_dir_arg="${usage_out_dir:-/tmp/drones-bench-${stamp}-$$}"
+out_dir_arg="${usage_out_dir:-/tmp/sphincters-bench-${stamp}-$$}"
 out_dir=$(drones_resolve_path "$out_dir_arg")
 summary_file="$out_dir/summary.json"
 mkdir -p "$out_dir"
@@ -68,7 +68,7 @@ batch_size=0
 
 i=1
 while [ "$i" -le "$count" ]; do
-  session_name="drones-bench-${safe_profile}-${stamp}-$$-$i"
+  session_name="sphincters-bench-${safe_profile}-${stamp}-$$-$i"
   result_file="$out_dir/result-$i.json"
   stdout_file="$out_dir/ping-$i.stdout"
   stderr_file="$out_dir/ping-$i.stderr"
@@ -128,7 +128,7 @@ if [ "${#result_files[@]}" -eq 0 ]; then
 fi
 
 jq -s \
-  --arg type "drones-bench" \
+  --arg type "sphincters-bench" \
   --arg profile "$profile" \
   --arg model "$model" \
   --arg out_dir "$out_dir" \
@@ -170,7 +170,7 @@ jq -s \
 if [ "$usage_json" = "true" ]; then
   cat "$summary_file"
 else
-  printf '%s\n' '== drones:bench =='
+  printf '%s\n' '== sphincters:bench =='
   printf '  profile:  %s\n' "$profile"
   printf '  model:    %s\n' "$model"
   printf '  dry run:  %s\n' "$usage_dry_run"

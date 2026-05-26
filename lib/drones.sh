@@ -7,7 +7,7 @@ DRONES_REPO_DIR="$(cd "$DRONES_LIB_DIR/.." && pwd)"
 # Paths passed to an installed shiv package are caller-relative. Direct mise
 # runs fall back to the current shell's PWD.
 drones_caller_pwd() {
-  printf '%s\n' "${DRONES_CALLER_PWD:-$PWD}"
+  printf '%s\n' "${SPHINCTERS_CALLER_PWD:-${DRONES_CALLER_PWD:-$PWD}}"
 }
 
 drones_resolve_path() {
@@ -70,7 +70,7 @@ drones_require_positive_int() {
 }
 
 drones_profile_roots() {
-  local roots="${DRONES_PROFILE_PATH:-$DRONES_REPO_DIR/profiles}"
+  local roots="${SPHINCTERS_PROFILE_PATH:-${DRONES_PROFILE_PATH:-$DRONES_REPO_DIR/profiles}}"
   local rest root
   rest="$roots:"
   while [ -n "$rest" ]; do
@@ -117,12 +117,12 @@ drones_profile_executable() {
 
 drones_resolve_model() {
   local model="$1"
-  model="${model:-${DRONES_MODEL:-${SESSIONS_DEFAULT_MODEL:-}}}"
+  model="${model:-${SPHINCTERS_MODEL:-${DRONES_MODEL:-${SESSIONS_DEFAULT_MODEL:-}}}}"
   if [ -z "$model" ]; then
     cat >&2 <<'ERR'
 error: model is required
 
-Pass --model <provider/model> or set DRONES_MODEL / SESSIONS_DEFAULT_MODEL.
+Pass --model <provider/model> or set SPHINCTERS_MODEL / SESSIONS_DEFAULT_MODEL.
 ERR
     exit 2
   fi

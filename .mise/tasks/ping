@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #MISE description="Run one minimal drone ping and record an ACK summary"
 #USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
-#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use SPHINCTERS_MODEL or SESSIONS_DEFAULT_MODEL"
 #USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
-#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-ping-*)"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/sphincters-ping-*)"
 #USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
 #USAGE flag "--prompt <text>" default="" help="Prompt text (default: minimal DRONE_ACK prompt)"
 #USAGE flag "--prompt-file <file>" default="" help="Prompt file (overrides --prompt)"
@@ -20,12 +20,12 @@ profile="$usage_profile"
 model=$(drones_resolve_model "$usage_model")
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 safe_profile=$(printf '%s' "$profile" | drones_safe_name)
-name="${usage_name:-drones-ping-${safe_profile}-${stamp}-$$}"
+name="${usage_name:-sphincters-ping-${safe_profile}-${stamp}-$$}"
 if ! drones_validate_session_name "$name"; then
   exit 2
 fi
 
-out_dir_arg="${usage_out_dir:-/tmp/drones-ping-${stamp}-$$}"
+out_dir_arg="${usage_out_dir:-/tmp/sphincters-ping-${stamp}-$$}"
 out_dir=$(drones_resolve_path "$out_dir_arg")
 if [ -n "$usage_result_file" ]; then
   result_file=$(drones_resolve_path "$usage_result_file")
@@ -117,7 +117,7 @@ result_tmp="$result_file.tmp.$$"
 trap 'rm -f "$result_tmp"' EXIT
 jq -n \
   --slurpfile run "$run_result_file" \
-  --arg type "drones-ping" \
+  --arg type "sphincters-ping" \
   --arg session "$name" \
   --arg profile "$profile" \
   --arg model "$model" \
@@ -159,7 +159,7 @@ mv "$result_tmp" "$result_file"
 if [ "$usage_json" = "true" ]; then
   cat "$result_file"
 else
-  printf '%s\n' '== drones:ping =='
+  printf '%s\n' '== sphincters:ping =='
   printf '  session:  %s\n' "$name"
   printf '  profile:  %s\n' "$profile"
   printf '  model:    %s\n' "$model"
@@ -171,7 +171,7 @@ else
 fi
 
 if [ "$ping_rc" -ne 0 ]; then
-  echo "error: drones ping failed (rc=$ping_rc); logs are in $out_dir" >&2
+  echo "error: sphincters ping failed (rc=$ping_rc); logs are in $out_dir" >&2
   if [ -s "$run_stderr" ]; then
     echo "--- run stderr ---" >&2
     tail -40 "$run_stderr" >&2

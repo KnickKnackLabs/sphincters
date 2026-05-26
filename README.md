@@ -1,8 +1,8 @@
-# drones
+# sphincters
 
 **Run one short-lived worker, then leave the evidence behind.**
 
-`drones` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded worker run with a prompt, launch profile, logs, transcript, and machine-readable result JSON.
+`sphincters` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded worker run with a prompt, launch profile, logs, transcript, and machine-readable result JSON.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ A run creates an output directory containing:
 - a transcript file;
 - a result JSON file with paths, profile metadata, timestamps, and return codes.
 
-Relative `--prompt-file`, `--cwd`, `--out-dir`, and `--result-file` paths resolve against `DRONES_CALLER_PWD` when installed through `shiv`, or the current directory during direct `mise run` use.
+Relative `--prompt-file`, `--cwd`, `--out-dir`, and `--result-file` paths resolve against `SPHINCTERS_CALLER_PWD` when installed through `shiv`, or the current directory during direct `mise run` use.
 
 ```bash
 mise run run \
@@ -45,25 +45,25 @@ The built-in `plain` profile scrubs ambient identity and common side-effect cred
 
 ## Profiles
 
-Profiles are executable launch adapters. `mise run run --profile <name>` finds an executable under `profiles/<name>` or under `DRONES_PROFILE_PATH`, runs it, and expects JSON on stdout:
+Profiles are executable launch adapters. `mise run run --profile <name>` finds an executable under `profiles/<name>` or under `SPHINCTERS_PROFILE_PATH`, runs it, and expects JSON on stdout:
 
 ```json
 {
   "version": 1,
   "profile": {"name": "plain", "kind": "plain", "subject": "drone"},
-  "cwd": "/tmp/drones-run/cwd",
-  "system_prompt_file": "/tmp/drones-run/plain-system-prompt.md",
+  "cwd": "/tmp/sphincters-run/cwd",
+  "system_prompt_file": "/tmp/sphincters-run/plain-system-prompt.md",
   "identity": {"mode": "skip"},
   "unset_env": ["GH_TOKEN", "GITHUB_TOKEN"],
   "meta": {"drone.profile": "plain"}
 }
 ```
 
-`drones run` owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Profiles only prepare launch context: cwd, optional system prompt, env scrubbing, and metadata.
+`sphincters run` owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Profiles only prepare launch context: cwd, optional system prompt, env scrubbing, and metadata.
 
 ## Ping
 
-`mise run ping` is the minimal smoke-test wrapper. With no prompt, it generates a deterministic `DRONE_ACK <session>` prompt, calls `run`, then writes a `drones-ping` summary JSON that embeds the underlying run result and records total elapsed milliseconds.
+`mise run ping` is the minimal smoke-test wrapper. With no prompt, it generates a deterministic `DRONE_ACK <session>` prompt, calls `run`, then writes a `sphincters-ping` summary JSON that embeds the underlying run result and records total elapsed milliseconds.
 
 ```bash
 mise run ping --model openai-codex/gpt-5.5 --json
@@ -73,7 +73,7 @@ Use `--dry-run` to verify file/result plumbing without launching a model.
 
 ## Bench
 
-`mise run bench` repeats `ping` and writes a `drones-bench` summary with success counts and timing stats. It can run pings in small parallel batches:
+`mise run bench` repeats `ping` and writes a `sphincters-bench` summary with success counts and timing stats. It can run pings in small parallel batches:
 
 ```bash
 mise run bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json

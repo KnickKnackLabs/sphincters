@@ -1,6 +1,6 @@
-drones() {
+sphincters() {
   local caller
-  caller="${DRONES_CALLER_PWD:-$REPO_DIR}"
-  cd "$REPO_DIR" && env DRONES_CALLER_PWD="$caller" mise run -q "$@"
+  caller="${SPHINCTERS_CALLER_PWD:-$REPO_DIR}"
+  cd "$REPO_DIR" && env SPHINCTERS_CALLER_PWD="$caller" mise run -q "$@"
 }
-export -f drones
+export -f sphincters
