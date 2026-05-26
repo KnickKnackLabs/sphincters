@@ -1,6 +1,6 @@
 # drones
 
-**Run one short-lived agent worker, then leave the evidence behind.**
+**Run one short-lived worker, then leave the evidence behind.**
 
 `drones` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded worker run with a prompt, launch profile, logs, transcript, and machine-readable result JSON.
 
@@ -13,6 +13,7 @@ mise install
 # No model call; writes prompt/log/result files only.
 mise run run --dry-run --model fake/model --prompt "Say hello" --json
 mise run ping --dry-run --model fake/model --json
+mise run bench --dry-run --model fake/model --count 3 --parallel 2 --json
 
 mise run test
 mise run lint
@@ -40,7 +41,7 @@ mise run run \
   --json
 ```
 
-The built-in `plain` profile scrubs agent identity and common side-effect credentials before waking. Plain drones should draft or report unless the prompt and environment deliberately permit side effects.
+The built-in `plain` profile scrubs ambient identity and common side-effect credentials before waking. Plain drones should draft or report unless the prompt and environment deliberately permit side effects.
 
 ## Profiles
 
@@ -69,6 +70,16 @@ mise run ping --model openai-codex/gpt-5.5 --json
 ```
 
 Use `--dry-run` to verify file/result plumbing without launching a model.
+
+## Bench
+
+`mise run bench` repeats `ping` and writes a `drones-bench` summary with success counts and timing stats. It can run pings in small parallel batches:
+
+```bash
+mise run bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
+```
+
+Use `--dry-run` before turning up count or parallelism. Bench is a harness check, not a swarm coordinator.
 
 ## Codebase health
 

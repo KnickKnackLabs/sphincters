@@ -61,6 +61,14 @@ drones_validate_env_name() {
   [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
 }
 
+drones_require_positive_int() {
+  local name="$1" value="$2"
+  if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ]; then
+    echo "error: --$name must be a positive integer (got: $value)" >&2
+    exit 2
+  fi
+}
+
 drones_profile_roots() {
   local roots="${DRONES_PROFILE_PATH:-$DRONES_REPO_DIR/profiles}"
   local rest root

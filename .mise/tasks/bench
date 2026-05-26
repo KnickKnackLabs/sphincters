@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+#MISE description="Run repeated drone pings, optionally in small parallel batches"
+#USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--count <n>" default="3" help="Number of pings to run"
+#USAGE flag "--parallel <n>" default="1" help="How many pings to run concurrently per batch"
+#USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-bench-*)"
+#USAGE flag "--prompt <text>" default="" help="Prompt text passed to each ping (default: ping's DRONE_ACK prompt)"
+#USAGE flag "--prompt-file <file>" default="" help="Prompt file passed to each ping (overrides --prompt)"
+#USAGE flag "--json" default=#false help="Print summary JSON to stdout"
+#USAGE flag "--dry-run" default=#false help="Prepare run files/results without launching sessions"
+#USAGE example "mise run bench --dry-run --model fake/model --count 3 --parallel 2 --json" header="Exercise bench plumbing without launching models"
+#USAGE example "mise run bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json" header="Run a serial real ping bench"
+set -euo pipefail
+
+source "$MISE_CONFIG_ROOT/lib/drones.sh"
+
+profile="$usage_profile"
+model=$(drones_resolve_model "$usage_model")
+count="$usage_count"
+parallel="$usage_parallel"
+drones_require_positive_int "count" "$count"
+drones_require_positive_int "parallel" "$parallel"
+
+stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+safe_profile=$(printf '%s' "$profile" | drones_safe_name)
+out_dir_arg="${usage_out_dir:-/tmp/drones-bench-${stamp}-$$}"
+out_dir=$(drones_resolve_path "$out_dir_arg")
+summary_file="$out_dir/summary.json"
+mkdir -p "$out_dir"
+
+prompt_args=()
+if [ -n "$usage_prompt_file" ]; then
+  prompt_args+=(--prompt-file "$usage_prompt_file")
+elif [ -n "$usage_prompt" ]; then
+  prompt_args+=(--prompt "$usage_prompt")
+fi
+
+cwd_args=()
+if [ -n "$usage_cwd" ]; then
+  cwd_args+=(--cwd "$usage_cwd")
+fi
+
+dry_args=()
+if [ "$usage_dry_run" = "true" ]; then
+  dry_args+=(--dry-run)
+fi
+
+wait_for_batch() {
+  local batch_rc=0
+  local pid
+  for pid in $batch_pids; do
+    if wait "$pid"; then
+      :
+    else
+      batch_rc=1
+    fi
+  done
+  return "$batch_rc"
+}
+
+bench_started_at=$(drones_now_iso)
+bench_start_ms=$(drones_now_ms)
+bench_rc=0
+batch_pids=""
+batch_size=0
+
+i=1
+while [ "$i" -le "$count" ]; do
+  session_name="drones-bench-${safe_profile}-${stamp}-$$-$i"
+  result_file="$out_dir/result-$i.json"
+  stdout_file="$out_dir/ping-$i.stdout"
+  stderr_file="$out_dir/ping-$i.stderr"
+
+  (
+    cd "$MISE_CONFIG_ROOT"
+    mise run ping \
+      --profile "$profile" \
+      --model "$model" \
+      --out-dir "$out_dir" \
+      --name "$session_name" \
+      --result-file "$result_file" \
+      --json \
+      "${cwd_args[@]+"${cwd_args[@]}"}" \
+      "${dry_args[@]+"${dry_args[@]}"}" \
+      "${prompt_args[@]+"${prompt_args[@]}"}"
+  ) >"$stdout_file" 2>"$stderr_file" &
+
+  batch_pids="$batch_pids $!"
+  batch_size=$((batch_size + 1))
+
+  if [ "$batch_size" -ge "$parallel" ]; then
+    if wait_for_batch; then
+      :
+    else
+      bench_rc=1
+    fi
+    batch_pids=""
+    batch_size=0
+  fi
+
+  i=$((i + 1))
+done
+
+if [ -n "$batch_pids" ]; then
+  if wait_for_batch; then
+    :
+  else
+    bench_rc=1
+  fi
+fi
+
+bench_end_ms=$(drones_now_ms)
+bench_finished_at=$(drones_now_iso)
+bench_ms=$((bench_end_ms - bench_start_ms))
+
+result_files=()
+for f in "$out_dir"/result-*.json; do
+  if [ -e "$f" ]; then
+    result_files+=("$f")
+  fi
+done
+
+if [ "${#result_files[@]}" -eq 0 ]; then
+  echo "error: no ping result files written in $out_dir" >&2
+  exit 1
+fi
+
+jq -s \
+  --arg type "drones-bench" \
+  --arg profile "$profile" \
+  --arg model "$model" \
+  --arg out_dir "$out_dir" \
+  --arg started_at "$bench_started_at" \
+  --arg finished_at "$bench_finished_at" \
+  --argjson dry_run "$usage_dry_run" \
+  --argjson count_requested "$count" \
+  --argjson parallel "$parallel" \
+  --argjson bench_ms "$bench_ms" \
+  'def median($a):
+     ($a | length) as $n |
+     if $n == 0 then null
+     elif ($n % 2) == 1 then $a[($n / 2 | floor)]
+     else (($a[($n / 2 - 1)] + $a[($n / 2)]) / 2)
+     end;
+   def stats($a):
+     if ($a | length) == 0 then {min: null, median: null, avg: null, max: null}
+     else {min: $a[0], median: median($a), avg: (($a | add) / ($a | length)), max: $a[-1]}
+     end;
+   map(select(.rc.ping == 0)) as $ok |
+   map(select(.rc.ping != 0)) as $failed |
+   {
+     type: $type,
+     profile: $profile,
+     model: $model,
+     dry_run: $dry_run,
+     out_dir: $out_dir,
+     started_at: $started_at,
+     finished_at: $finished_at,
+     count_requested: $count_requested,
+     count_observed: length,
+     parallel: $parallel,
+     success: ($ok | length),
+     failed: ($failed | length),
+     ms: {bench: $bench_ms, ping_total: stats(map(.ms.total) | sort)},
+     pings: map({session, result_file, run_result_file, ack_ok, rc, total_ms: .ms.total})
+   }' "${result_files[@]}" > "$summary_file"
+
+if [ "$usage_json" = "true" ]; then
+  cat "$summary_file"
+else
+  printf '%s\n' '== drones:bench =='
+  printf '  profile:  %s\n' "$profile"
+  printf '  model:    %s\n' "$model"
+  printf '  dry run:  %s\n' "$usage_dry_run"
+  printf '  count:    %s\n' "$count"
+  printf '  parallel: %s\n' "$parallel"
+  printf '  out:      %s\n' "$out_dir"
+  printf '  summary:  %s\n' "$summary_file"
+  jq -r '"  success:  \(.success)/\(.count_observed)", "  bench_ms: \(.ms.bench)"' "$summary_file"
+fi
+
+if [ "$bench_rc" -ne 0 ]; then
+  echo "error: one or more drone pings failed; inspect $out_dir/ping-*.stderr and result-*.json" >&2
+fi
+
+exit "$bench_rc"
