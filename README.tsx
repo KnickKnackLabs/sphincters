@@ -2,8 +2,6 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { execSync } from "child_process";
-
 import {
   Heading, Paragraph, CodeBlock, LineBreak, HR,
   Bold, Code, Link,
@@ -25,16 +23,6 @@ const testSrc = testFiles
   .map((f) => readFileSync(join(TEST_DIR, f), "utf-8"))
   .join("\n");
 const testCount = [...testSrc.matchAll(/@test "/g)].length;
-
-function latestTag(): string {
-  try {
-    return execSync("git describe --tags --abbrev=0", { cwd: ROOT, encoding: "utf-8" }).trim();
-  } catch {
-    return "unreleased";
-  }
-}
-
-const release = latestTag();
 
 const boundaryDiagram = [
   "                 sphincters run",
@@ -77,25 +65,26 @@ const profileJson = `{
 const readme = (
   <>
     <Center>
-      <Raw>{`<p align="center"><img src="assets/hero.jpg" alt="A tired cartoon sphincter mascot" width="360" /></p>\n\n`}</Raw>
+      <Raw>{`<p align="center"><img src="assets/hero.png" alt="Sphincters mascot" width="360" /></p>\n\n`}</Raw>
 
       <Heading level={1}>sphincters</Heading>
 
       <Paragraph>
-        <Bold>Run one bounded worker, then leave the evidence behind.</Bold>
+        <Bold>Launch worker sessions through profiles and keep their records inspectable.</Bold>
       </Paragraph>
 
       <Paragraph>
-        A sphincter is a boundary. This one tightens around a prompt, a launch
-        profile, and a single headless session so the parent process gets a
-        clean artifact trail instead of a mysterious background swarm.
+        <Code>sphincters</Code> wraps session launch patterns in a small,
+        profile-driven interface. It records prompts, profile specs, logs,
+        transcripts, and result JSON so a parent process can inspect the run
+        later.
       </Paragraph>
 
       <Badges>
         <Badge label="lang" value="bash" color="4EAA25" logo="gnubash" logoColor="white" />
         <Badge label="tests" value={`${testCount} passing`} color="brightgreen" href="test/" />
         <Badge label="workers" value={`${workerTasks.length} commands`} color="blue" />
-        <Badge label="release" value={release} color="orange" />
+        <Badge label="install" value="shiv" color="orange" />
       </Badges>
     </Center>
 
@@ -108,7 +97,7 @@ shiv install sphincters
 # Check the plumbing without launching a model
 sphincters ping --dry-run --model fake/model --json
 
-# Run one bounded worker
+# Start a worker session
 sphincters run \\
   --profile plain \\
   --model openai-codex/gpt-5.5 \\
@@ -116,32 +105,33 @@ sphincters run \\
   --out-dir exports/first-run \\
   --json
 
-# Repeat the smallest smoke test
+# Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</CodeBlock>
     </Section>
 
     <Section title="What it is">
       <Paragraph>
         <Code>sphincters</Code>
-        {" is a small runner for short-lived workers. The runner owns "}
+        {" is a small runner for worker sessions. The runner owns "}
         <Code>sessions new</Code>
         {", "}
         <Code>sessions wake --headless</Code>
         {", "}
         <Code>sessions read</Code>
-        {", logging, and result JSON. Profiles only describe how the worker should be launched."}
+        {", logging, and result JSON. Profiles describe how the worker should be launched."}
       </Paragraph>
 
       <CodeBlock>{boundaryDiagram}</CodeBlock>
 
       <Paragraph>
-        The important distinction: the core abstraction is not "agent." It is
-        worker/profile/session. A profile may launch an agent identity under the
-        hood later, but the runner should not care.
+        The core abstraction is worker/profile/session. A profile can describe
+        a plain model call today and can later describe an agent identity,
+        long-running process, or re-wake policy without changing the runner's
+        record format.
       </Paragraph>
     </Section>
 
-    <Section title="Artifacts, not vibes">
+    <Section title="Run records">
       <Paragraph>
         Every run writes a directory that a human or parent process can inspect.
         If a worker failed, the logs are already separated by phase. If it
@@ -165,11 +155,11 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
       </Details>
     </Section>
 
-    <Section title="Three useful motions">
+    <Section title="Three useful commands">
       <List>
         <Item>
           <Bold>run</Bold>
-          {" — one prompt through one profile into one session, with logs and transcript."}
+          {" — send a prompt through a profile into a session, with logs and transcript."}
         </Item>
         <Item>
           <Bold>ping</Bold>
@@ -218,7 +208,7 @@ mise exec -- readme build --check`}</CodeBlock>
 
       <Paragraph>
         This README is generated from <Code>README.tsx</Code>. The test count
-        and release badge are computed when the README is built.
+        is computed when the README is built.
       </Paragraph>
     </Section>
 
@@ -226,13 +216,9 @@ mise exec -- readme build --check`}</CodeBlock>
 
     <Center>
       <Paragraph>
-        <Bold>Keep the boundary tight. Let the evidence out.</Bold>
-      </Paragraph>
-      <Paragraph>
-        <Link href="https://github.com/KnickKnackLabs/sessions">sessions</Link>
-        {" provides the transcript machinery; "}
-        <Link href="https://github.com/KnickKnackLabs/shiv">shiv</Link>
-        {" installs the released command."}
+        Related tools: <Link href="https://github.com/KnickKnackLabs/sessions">sessions</Link>
+        {" and "}
+        <Link href="https://github.com/KnickKnackLabs/shiv">shiv</Link>.
       </Paragraph>
     </Center>
   </>

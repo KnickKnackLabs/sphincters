@@ -1,17 +1,17 @@
 <div align="center">
 
-<p align="center"><img src="assets/hero.jpg" alt="A tired cartoon sphincter mascot" width="360" /></p>
+<p align="center"><img src="assets/hero.png" alt="Sphincters mascot" width="360" /></p>
 
 # sphincters
 
-**Run one bounded worker, then leave the evidence behind.**
+**Launch worker sessions through profiles and keep their records inspectable.**
 
-A sphincter is a boundary. This one tightens around a prompt, a launch profile, and a single headless session so the parent process gets a clean artifact trail instead of a mysterious background swarm.
+`sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
 [![tests: 14 passing](https://img.shields.io/badge/tests-14%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
-![release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-orange?style=flat)
+![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
 </div>
 
@@ -26,7 +26,7 @@ shiv install sphincters
 # Check the plumbing without launching a model
 sphincters ping --dry-run --model fake/model --json
 
-# Run one bounded worker
+# Start a worker session
 sphincters run \
   --profile plain \
   --model openai-codex/gpt-5.5 \
@@ -34,13 +34,13 @@ sphincters run \
   --out-dir exports/first-run \
   --json
 
-# Repeat the smallest smoke test
+# Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 ```
 
 ## What it is
 
-`sphincters` is a small runner for short-lived workers. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. Profiles only describe how the worker should be launched.
+`sphincters` is a small runner for worker sessions. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. Profiles describe how the worker should be launched.
 
 ```
                  sphincters run
@@ -58,9 +58,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
                  logs + transcript + result.json
 ```
 
-The important distinction: the core abstraction is not "agent." It is worker/profile/session. A profile may launch an agent identity under the hood later, but the runner should not care.
+The core abstraction is worker/profile/session. A profile can describe a plain model call today and can later describe an agent identity, long-running process, or re-wake policy without changing the runner's record format.
 
-## Artifacts, not vibes
+## Run records
 
 Every run writes a directory that a human or parent process can inspect. If a worker failed, the logs are already separated by phase. If it succeeded, the transcript and result JSON point at each other.
 
@@ -97,9 +97,9 @@ A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It pr
 
 </details>
 
-## Three useful motions
+## Three useful commands
 
-- **run** — one prompt through one profile into one session, with logs and transcript.
+- **run** — send a prompt through a profile into a session, with logs and transcript.
 - **ping** — a deterministic `DRONE_ACK <session>` smoke test wrapped around `run`.
 - **bench** — repeated `ping` runs with `--count` / `--parallel` and timing stats. A harness check, not a swarm coordinator.
 
@@ -128,14 +128,12 @@ mise run lint
 mise exec -- readme build --check
 ```
 
-This README is generated from `README.tsx`. The test count and release badge are computed when the README is built.
+This README is generated from `README.tsx`. The test count is computed when the README is built.
 
 ---
 
 <div align="center">
 
-**Keep the boundary tight. Let the evidence out.**
-
-[sessions](https://github.com/KnickKnackLabs/sessions) provides the transcript machinery; [shiv](https://github.com/KnickKnackLabs/shiv) installs the released command.
+Related tools: [sessions](https://github.com/KnickKnackLabs/sessions) and [shiv](https://github.com/KnickKnackLabs/shiv).
 
 </div>
