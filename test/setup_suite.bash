@@ -1,4 +1,5 @@
 setup_suite() {
-  export REPO_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  REPO_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export REPO_DIR
   eval "$(cd "$REPO_DIR" && mise env)"
 }

@@ -16,20 +16,36 @@ source "$MISE_CONFIG_ROOT/lib/drones.sh"
 model=$(drones_resolve_model "$usage_model")
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 base="drones-run-${stamp}-$$"
-out_dir="${usage_out_dir:-/tmp/$base}"
+out_dir_arg="${usage_out_dir:-/tmp/$base}"
+out_dir=$(drones_resolve_path "$out_dir_arg")
 name="${usage_name:-$base}"
-result_file="${usage_result_file:-$out_dir/$name.result.json}"
-cwd="${usage_cwd:-$out_dir/cwd}"
+if ! drones_validate_session_name "$name"; then
+  exit 2
+fi
+
+if [ -n "$usage_result_file" ]; then
+  result_file=$(drones_resolve_path "$usage_result_file")
+else
+  result_file="$out_dir/$name.result.json"
+fi
+
+if [ -n "$usage_cwd" ]; then
+  cwd=$(drones_resolve_path "$usage_cwd")
+else
+  cwd="$out_dir/cwd"
+fi
 
 mkdir -p "$out_dir" "$cwd"
+drones_mkdir_parent "$result_file"
 
 prompt_file="$out_dir/$name.prompt.md"
 if [ -n "$usage_prompt_file" ]; then
-  if [ ! -f "$usage_prompt_file" ]; then
-    echo "error: prompt file not found: $usage_prompt_file" >&2
+  source_prompt_file=$(drones_resolve_path "$usage_prompt_file")
+  if [ ! -f "$source_prompt_file" ]; then
+    echo "error: prompt file not found: $source_prompt_file" >&2
     exit 2
   fi
-  cp "$usage_prompt_file" "$prompt_file"
+  cp "$source_prompt_file" "$prompt_file"
 elif [ -n "$usage_prompt" ]; then
   printf '%s\n' "$usage_prompt" > "$prompt_file"
 else
@@ -44,6 +60,7 @@ wake_log="$out_dir/$name.wake.log"
 read_log="$out_dir/$name.read.log"
 transcript_file="$out_dir/$name.transcript.txt"
 started_at=$(drones_now_iso)
+caller_pwd=$(drones_caller_pwd)
 
 new_rc=-1
 wake_rc=-1
@@ -62,6 +79,7 @@ else
     --cwd "$cwd" \
     --meta "drone.tool=drones" \
     --meta "drone.out_dir=$out_dir" \
+    --meta "drone.caller_pwd=$caller_pwd" \
     >"$new_log" 2>&1; then
     new_rc=0
   else
@@ -108,25 +126,59 @@ else
 fi
 
 finished_at=$(drones_now_iso)
+result_tmp="$result_file.tmp.$$"
+trap 'rm -f "$result_tmp"' EXIT
 
 jq -n \
   --arg type "drones-run" \
   --arg session "$name" \
   --arg model "$model" \
+  --arg caller_pwd "$caller_pwd" \
   --arg out_dir "$out_dir" \
   --arg cwd "$cwd" \
   --arg prompt_file "$prompt_file" \
   --arg system_prompt_file "$system_prompt_file" \
   --arg result_file "$result_file" \
   --arg transcript_file "$transcript_file" \
+  --arg new_log "$new_log" \
+  --arg wake_log "$wake_log" \
+  --arg read_log "$read_log" \
   --arg started_at "$started_at" \
   --arg finished_at "$finished_at" \
   --argjson dry_run "$usage_dry_run" \
   --argjson new_rc "$new_rc" \
   --argjson wake_rc "$wake_rc" \
   --argjson read_rc "$read_rc" \
-  '{type:$type, session:$session, model:$model, dry_run:$dry_run, cwd:$cwd, out_dir:$out_dir, files:{prompt:$prompt_file, system_prompt:$system_prompt_file, result:$result_file, transcript:$transcript_file}, started_at:$started_at, finished_at:$finished_at, rc:{new:$new_rc, wake:$wake_rc, read:$read_rc}}' \
-  > "$result_file"
+  '{
+    type: $type,
+    session: $session,
+    model: $model,
+    dry_run: $dry_run,
+    caller_pwd: $caller_pwd,
+    cwd: $cwd,
+    out_dir: $out_dir,
+    files: {
+      prompt: $prompt_file,
+      system_prompt: $system_prompt_file,
+      result: $result_file,
+      transcript: $transcript_file,
+      logs: {new: $new_log, wake: $wake_log, read: $read_log}
+    },
+    started_at: $started_at,
+    finished_at: $finished_at,
+    rc: {new: $new_rc, wake: $wake_rc, read: $read_rc}
+  }' \
+  > "$result_tmp"
+mv "$result_tmp" "$result_file"
+
+final_rc=0
+if [ "$new_rc" -ne 0 ]; then
+  final_rc="$new_rc"
+elif [ "$wake_rc" -ne 0 ]; then
+  final_rc="$wake_rc"
+elif [ "$read_rc" -ne 0 ]; then
+  final_rc="$read_rc"
+fi
 
 if [ "$usage_json" = "true" ]; then
   cat "$result_file"
@@ -138,12 +190,21 @@ else
   printf '  out:        %s\n' "$out_dir"
   printf '  result:     %s\n' "$result_file"
   printf '  transcript: %s\n' "$transcript_file"
+  printf '  rc:         new=%s wake=%s read=%s\n' "$new_rc" "$wake_rc" "$read_rc"
 fi
 
-if [ "$new_rc" -ne 0 ]; then
-  exit "$new_rc"
-elif [ "$wake_rc" -ne 0 ]; then
-  exit "$wake_rc"
-elif [ "$read_rc" -ne 0 ]; then
-  exit "$read_rc"
+if [ "$final_rc" -ne 0 ]; then
+  echo "error: drones run failed (rc=$final_rc); logs are in $out_dir" >&2
+  if [ -s "$wake_log" ]; then
+    echo "--- wake log tail ---" >&2
+    tail -40 "$wake_log" >&2
+  elif [ -s "$new_log" ]; then
+    echo "--- new log tail ---" >&2
+    tail -40 "$new_log" >&2
+  elif [ -s "$read_log" ]; then
+    echo "--- read log tail ---" >&2
+    tail -40 "$read_log" >&2
+  fi
 fi
+
+exit "$final_rc"
