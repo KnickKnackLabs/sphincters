@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+#MISE description="Run one minimal drone ping and record an ACK summary"
+#USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
+#USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use DRONES_MODEL or SESSIONS_DEFAULT_MODEL"
+#USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
+#USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/drones-ping-*)"
+#USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
+#USAGE flag "--prompt <text>" default="" help="Prompt text (default: minimal DRONE_ACK prompt)"
+#USAGE flag "--prompt-file <file>" default="" help="Prompt file (overrides --prompt)"
+#USAGE flag "--result-file <file>" default="" help="Where to write ping summary JSON (default: <out-dir>/<session>.ping.json)"
+#USAGE flag "--json" default=#false help="Print ping summary JSON to stdout"
+#USAGE flag "--dry-run" default=#false help="Prepare run files/result without launching sessions"
+#USAGE example "mise run ping --dry-run --model fake/model --json" header="Prepare a ping without launching a model"
+#USAGE example "mise run ping --model openai-codex/gpt-5.5 --json" header="Run a real ACK ping"
+set -euo pipefail
+
+source "$MISE_CONFIG_ROOT/lib/drones.sh"
+
+profile="$usage_profile"
+model=$(drones_resolve_model "$usage_model")
+stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+safe_profile=$(printf '%s' "$profile" | drones_safe_name)
+name="${usage_name:-drones-ping-${safe_profile}-${stamp}-$$}"
+if ! drones_validate_session_name "$name"; then
+  exit 2
+fi
+
+out_dir_arg="${usage_out_dir:-/tmp/drones-ping-${stamp}-$$}"
+out_dir=$(drones_resolve_path "$out_dir_arg")
+if [ -n "$usage_result_file" ]; then
+  result_file=$(drones_resolve_path "$usage_result_file")
+else
+  result_file="$out_dir/$name.ping.json"
+fi
+run_result_file="$out_dir/$name.run.json"
+run_stdout="$out_dir/$name.run.stdout"
+run_stderr="$out_dir/$name.run.stderr"
+
+mkdir -p "$out_dir"
+drones_mkdir_parent "$result_file"
+
+prompt_args=()
+expected_ack=""
+if [ -n "$usage_prompt_file" ]; then
+  prompt_args+=(--prompt-file "$usage_prompt_file")
+elif [ -n "$usage_prompt" ]; then
+  prompt_args+=(--prompt "$usage_prompt")
+else
+  expected_ack="DRONE_ACK $name"
+  prompt=$(drones_default_ping_prompt "$name")
+  prompt_args+=(--prompt "$prompt")
+fi
+
+cwd_args=()
+if [ -n "$usage_cwd" ]; then
+  cwd_args+=(--cwd "$usage_cwd")
+fi
+
+dry_args=()
+if [ "$usage_dry_run" = "true" ]; then
+  dry_args+=(--dry-run)
+fi
+
+started_at=$(drones_now_iso)
+start_ms=$(drones_now_ms)
+run_rc=0
+if (
+  cd "$MISE_CONFIG_ROOT"
+  mise run run \
+    --profile "$profile" \
+    --model "$model" \
+    --out-dir "$out_dir" \
+    --name "$name" \
+    --result-file "$run_result_file" \
+    --json \
+    "${cwd_args[@]}" \
+    "${dry_args[@]}" \
+    "${prompt_args[@]}"
+) >"$run_stdout" 2>"$run_stderr"; then
+  run_rc=0
+else
+  run_rc=$?
+fi
+end_ms=$(drones_now_ms)
+finished_at=$(drones_now_iso)
+total_ms=$((end_ms - start_ms))
+
+if [ ! -f "$run_result_file" ]; then
+  echo "error: ping run did not write result JSON: $run_result_file" >&2
+  if [ -s "$run_stderr" ]; then
+    echo "--- run stderr ---" >&2
+    tail -40 "$run_stderr" >&2
+  fi
+  exit "$run_rc"
+fi
+
+assistant_text=""
+ack_ok_json="null"
+if [ "$usage_dry_run" != "true" ] && [ -n "$expected_ack" ]; then
+  transcript_file=$(jq -r '.files.transcript' "$run_result_file")
+  if [ -f "$transcript_file" ]; then
+    assistant_text=$(jq -r '[.messages[]? | select(.role == "assistant")][-1].text // ""' "$transcript_file" 2>/dev/null || printf '')
+  fi
+  if [ "$assistant_text" = "$expected_ack" ]; then
+    ack_ok_json="true"
+  else
+    ack_ok_json="false"
+  fi
+fi
+
+ping_rc="$run_rc"
+if [ "$run_rc" -eq 0 ] && [ "$ack_ok_json" = "false" ]; then
+  ping_rc=1
+fi
+
+result_tmp="$result_file.tmp.$$"
+trap 'rm -f "$result_tmp"' EXIT
+jq -n \
+  --slurpfile run "$run_result_file" \
+  --arg type "drones-ping" \
+  --arg session "$name" \
+  --arg profile "$profile" \
+  --arg model "$model" \
+  --arg out_dir "$out_dir" \
+  --arg result_file "$result_file" \
+  --arg run_result_file "$run_result_file" \
+  --arg run_stdout "$run_stdout" \
+  --arg run_stderr "$run_stderr" \
+  --arg expected_ack "$expected_ack" \
+  --arg assistant_text "$assistant_text" \
+  --arg started_at "$started_at" \
+  --arg finished_at "$finished_at" \
+  --argjson dry_run "$usage_dry_run" \
+  --argjson ack_ok "$ack_ok_json" \
+  --argjson run_rc "$run_rc" \
+  --argjson ping_rc "$ping_rc" \
+  --argjson total_ms "$total_ms" \
+  '{
+    type: $type,
+    session: $session,
+    profile: $run[0].profile,
+    model: $model,
+    dry_run: $dry_run,
+    out_dir: $out_dir,
+    result_file: $result_file,
+    run_result_file: $run_result_file,
+    files: {run_stdout: $run_stdout, run_stderr: $run_stderr},
+    expected_ack: (if $expected_ack == "" then null else $expected_ack end),
+    assistant_text: (if $assistant_text == "" then null else $assistant_text end),
+    ack_ok: $ack_ok,
+    started_at: $started_at,
+    finished_at: $finished_at,
+    ms: {total: $total_ms},
+    rc: {run: $run_rc, ping: $ping_rc},
+    run: $run[0]
+  }' > "$result_tmp"
+mv "$result_tmp" "$result_file"
+
+if [ "$usage_json" = "true" ]; then
+  cat "$result_file"
+else
+  printf '%s\n' '== drones:ping =='
+  printf '  session:  %s\n' "$name"
+  printf '  profile:  %s\n' "$profile"
+  printf '  model:    %s\n' "$model"
+  printf '  dry run:  %s\n' "$usage_dry_run"
+  printf '  ack ok:   %s\n' "$ack_ok_json"
+  printf '  out:      %s\n' "$out_dir"
+  printf '  result:   %s\n' "$result_file"
+  printf '  total_ms: %s\n' "$total_ms"
+fi
+
+if [ "$ping_rc" -ne 0 ]; then
+  echo "error: drones ping failed (rc=$ping_rc); logs are in $out_dir" >&2
+  if [ -s "$run_stderr" ]; then
+    echo "--- run stderr ---" >&2
+    tail -40 "$run_stderr" >&2
+  fi
+fi
+
+exit "$ping_rc"

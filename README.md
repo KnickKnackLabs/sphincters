@@ -12,6 +12,7 @@ mise install
 
 # No model call; writes prompt/log/result files only.
 mise run run --dry-run --model fake/model --prompt "Say hello" --json
+mise run ping --dry-run --model fake/model --json
 
 mise run test
 mise run lint
@@ -58,6 +59,16 @@ Profiles are executable launch adapters. `mise run run --profile <name>` finds a
 ```
 
 `drones run` owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Profiles only prepare launch context: cwd, optional system prompt, env scrubbing, and metadata.
+
+## Ping
+
+`mise run ping` is the minimal smoke-test wrapper. With no prompt, it generates a deterministic `DRONE_ACK <session>` prompt, calls `run`, then writes a `drones-ping` summary JSON that embeds the underlying run result and records total elapsed milliseconds.
+
+```bash
+mise run ping --model openai-codex/gpt-5.5 --json
+```
+
+Use `--dry-run` to verify file/result plumbing without launching a model.
 
 ## Codebase health
 

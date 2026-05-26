@@ -28,6 +28,14 @@ drones_mkdir_parent() {
   [ "$parent" = "." ] || mkdir -p "$parent"
 }
 
+drones_now_ms() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
+  else
+    printf '%s000\n' "$(date +%s)"
+  fi
+}
+
 drones_now_iso() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
@@ -111,6 +119,17 @@ ERR
     exit 2
   fi
   printf '%s\n' "$model"
+}
+
+drones_default_ping_prompt() {
+  local session_name="$1"
+  cat <<PROMPT
+Reply exactly this single line and then stop:
+
+DRONE_ACK $session_name
+
+Do not use tools.
+PROMPT
 }
 
 drones_plain_system_prompt() {
