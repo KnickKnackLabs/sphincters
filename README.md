@@ -2,7 +2,7 @@
 
 **Run one short-lived agent worker, then leave the evidence behind.**
 
-`drones` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded, stateless worker run with a prompt, logs, transcript, and machine-readable result JSON.
+`drones` is a small extraction from Ikma's `drone-lab` prototype. It is intentionally not a swarm manager yet. The stable unit is one bounded worker run with a prompt, launch profile, logs, transcript, and machine-readable result JSON.
 
 ## Quick start
 
@@ -22,22 +22,42 @@ mise run lint
 A run creates an output directory containing:
 
 - the copied prompt file;
-- the generated stateless system prompt;
+- the profile launch spec;
+- the generated system prompt, when the profile provides one;
 - `sessions new`, `sessions wake`, and `sessions read` logs;
 - a transcript file;
-- a result JSON file with paths, timestamps, and return codes.
+- a result JSON file with paths, profile metadata, timestamps, and return codes.
 
 Relative `--prompt-file`, `--cwd`, `--out-dir`, and `--result-file` paths resolve against `DRONES_CALLER_PWD` when installed through `shiv`, or the current directory during direct `mise run` use.
 
 ```bash
 mise run run \
+  --profile plain \
   --model openai-codex/gpt-5.5 \
   --prompt-file task.md \
   --out-dir exports/first-drone \
   --json
 ```
 
-Plain drones scrub agent identity and common side-effect credentials before waking. They should draft or report unless the prompt and environment deliberately permit side effects.
+The built-in `plain` profile scrubs agent identity and common side-effect credentials before waking. Plain drones should draft or report unless the prompt and environment deliberately permit side effects.
+
+## Profiles
+
+Profiles are executable launch adapters. `mise run run --profile <name>` finds an executable under `profiles/<name>` or under `DRONES_PROFILE_PATH`, runs it, and expects JSON on stdout:
+
+```json
+{
+  "version": 1,
+  "profile": {"name": "plain", "kind": "plain", "subject": "drone"},
+  "cwd": "/tmp/drones-run/cwd",
+  "system_prompt_file": "/tmp/drones-run/plain-system-prompt.md",
+  "identity": {"mode": "skip"},
+  "unset_env": ["GH_TOKEN", "GITHUB_TOKEN"],
+  "meta": {"drone.profile": "plain"}
+}
+```
+
+`drones run` owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Profiles only prepare launch context: cwd, optional system prompt, env scrubbing, and metadata.
 
 ## Codebase health
 

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Emit launch spec for a stateless/plain drone profile.
+set -euo pipefail
+
+out_dir="${DRONES_OUT_DIR:?DRONES_OUT_DIR required}"
+profile="${DRONES_PROFILE:-plain}"
+cwd="${DRONES_CWD:-$out_dir/cwd}"
+system_prompt_file="$out_dir/plain-system-prompt.md"
+
+mkdir -p "$cwd"
+cat > "$system_prompt_file" <<'PROMPT'
+You are a stateless drone: a short-lived worker process for one scoped task.
+
+You do not have durable memory or prior conversation context. Complete the
+requested task directly, follow the output contract exactly, and stop. Do not
+perform side effects unless the prompt explicitly allows them.
+PROMPT
+
+jq -n \
+  --arg profile "$profile" \
+  --arg cwd "$cwd" \
+  --arg system_prompt_file "$system_prompt_file" \
+  '{
+    version: 1,
+    profile: {name: $profile, kind: "plain", subject: "drone"},
+    cwd: $cwd,
+    system_prompt_file: $system_prompt_file,
+    identity: {mode: "skip"},
+    unset_env: [
+      "DISPATCH_CONTEXT",
+      "GIT_AUTHOR_NAME",
+      "GIT_AUTHOR_EMAIL",
+      "GIT_COMMITTER_NAME",
+      "GIT_COMMITTER_EMAIL",
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "CHAT_IDENTITY",
+      "SHIMMER_OS_USER"
+    ],
+    meta: {
+      "drone.profile": $profile,
+      "drone.kind": "plain",
+      "drone.subject": "drone"
+    }
+  }'
