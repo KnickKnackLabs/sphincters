@@ -35,9 +35,10 @@ const boundaryDiagram = [
   "                       ▼",
   "  prompt.md ──▶ sessions new ──▶ sessions wake --headless ──▶ sessions read",
   "                       │                    │                    │",
+  "                       │                    │                    └─ skipped with --background",
   "                       └────────────────────┴────────────────────┘",
   "                                            ▼",
-  "                 logs + transcript + result.json",
+  "          logs + transcript/result JSON + optional attach handles",
 ].join("\n");
 
 const artifactTree = [
@@ -105,6 +106,14 @@ sphincters run \\
   --out-dir exports/first-run \\
   --json
 
+# Start a non-blocking same-agent sibling and return attach handles
+sphincters run \\
+  --profile sibling \\
+  --background \\
+  --model openai-codex/gpt-5.5 \\
+  --prompt-file handoff.md \\
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</CodeBlock>
     </Section>
@@ -118,7 +127,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
         <Code>sessions wake --headless</Code>
         {", "}
         <Code>sessions read</Code>
-        {", logging, and result JSON. Profiles describe how the worker should be launched."}
+        {", logging, and result JSON. With "}
+        <Code>--background</Code>
+        {", the runner skips the blocking read step and returns attach/read handles instead. Profiles describe how the worker should be launched."}
       </Paragraph>
 
       <CodeBlock>{boundaryDiagram}</CodeBlock>
@@ -147,7 +158,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
         <Code>SPHINCTERS_PROFILE_PATH</Code>. It prepares launch context and
         prints a JSON spec. The built-in <Code>plain</Code> profile creates a
         stateless system prompt and scrubs ambient identity and common
-        side-effect credentials before waking.
+        side-effect credentials before waking. The built-in <Code>sibling</Code>{" "}
+        profile preserves inherited agent identity for bounded same-agent
+        sibling work such as handoffs or PR watch/repair loops.
       </Paragraph>
 
       <Details summary="Profile JSON contract">
@@ -159,7 +172,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
       <List>
         <Item>
           <Bold>run</Bold>
-          {" — send a prompt through a profile into a session, with logs and transcript."}
+          {" — send a prompt through a profile into a session, with logs and transcript; add "}
+          <Code>--background</Code>
+          {" to return attach handles without waiting for transcript collection."}
         </Item>
         <Item>
           <Bold>ping</Bold>

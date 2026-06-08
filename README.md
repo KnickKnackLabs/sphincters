@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 14 passing](https://img.shields.io/badge/tests-14%20passing-brightgreen?style=flat)](test/)
+[![tests: 16 passing](https://img.shields.io/badge/tests-16%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
@@ -34,13 +34,21 @@ sphincters run \
   --out-dir exports/first-run \
   --json
 
+# Start a non-blocking same-agent sibling and return attach handles
+sphincters run \
+  --profile sibling \
+  --background \
+  --model openai-codex/gpt-5.5 \
+  --prompt-file handoff.md \
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 ```
 
 ## What it is
 
-`sphincters` is a small runner for worker sessions. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. Profiles describe how the worker should be launched.
+`sphincters` is a small runner for worker sessions. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. With `--background`, the runner skips the blocking read step and returns attach/read handles instead. Profiles describe how the worker should be launched.
 
 ```
                  sphincters run
@@ -53,9 +61,10 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
                        ▼
   prompt.md ──▶ sessions new ──▶ sessions wake --headless ──▶ sessions read
                        │                    │                    │
+                       │                    │                    └─ skipped with --background
                        └────────────────────┴────────────────────┘
                                             ▼
-                 logs + transcript + result.json
+          logs + transcript/result JSON + optional attach handles
 ```
 
 The core abstraction is worker/profile/session. A profile can describe a plain model call today and can later describe an agent identity, long-running process, or re-wake policy without changing the runner's record format.
@@ -78,7 +87,7 @@ exports/first-run/
 
 ## Profiles are launch adapters
 
-A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking.
+A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity for bounded same-agent sibling work such as handoffs or PR watch/repair loops.
 
 <details>
 <summary><b>Profile JSON contract</b></summary>
@@ -99,7 +108,7 @@ A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It pr
 
 ## Three useful commands
 
-- **run** — send a prompt through a profile into a session, with logs and transcript.
+- **run** — send a prompt through a profile into a session, with logs and transcript; add `--background` to return attach handles without waiting for transcript collection.
 - **ping** — a deterministic `DRONE_ACK <session>` smoke test wrapped around `run`.
 - **bench** — repeated `ping` runs with `--count` / `--parallel` and timing stats. A harness check, not a swarm coordinator.
 

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Emit launch spec for a same-agent sibling worker profile.
+set -euo pipefail
+
+out_dir="${SPHINCTERS_OUT_DIR:-${DRONES_OUT_DIR:-}}"
+if [ -z "$out_dir" ]; then
+  echo "error: SPHINCTERS_OUT_DIR required" >&2
+  exit 2
+fi
+
+profile="${SPHINCTERS_PROFILE:-${DRONES_PROFILE:-sibling}}"
+cwd="${SPHINCTERS_CWD:-${DRONES_CWD:-${AGENT_HOME:-${SPHINCTERS_CALLER_PWD:-$PWD}}}}"
+agent_name="${SPHINCTERS_SIBLING_AGENT:-${AGENT_NAME:-${GIT_AUTHOR_NAME:-${CHAT_IDENTITY:-sibling}}}}"
+system_prompt_file="$out_dir/sibling-system-prompt.md"
+
+mkdir -p "$cwd"
+cat > "$system_prompt_file" <<PROMPT
+You are a sibling worker session for ${agent_name}.
+
+You inherit the parent agent's identity, credentials, and workspace access. Use
+that power only inside the task packet's allowed side effects. Before durable
+side effects, verify the active identity in a non-secret way when practical.
+
+Read the provided task packet first. Keep ramp-up narrow, follow the packet's
+completion signal, and stop when the bounded task is complete or blocked. The
+parent session owns final integration unless the packet explicitly delegates
+commits, pushes, review comments, or other durable actions to you.
+
+If you are launched as a watch/repair sibling, wait on the named review or CI
+handle, then either report the result or apply only the authorized fix slice.
+Do not merge, publish releases, rotate credentials, or change global machine
+configuration unless the packet explicitly authorizes it.
+PROMPT
+
+jq -n \
+  --arg profile "$profile" \
+  --arg cwd "$cwd" \
+  --arg system_prompt_file "$system_prompt_file" \
+  --arg agent_name "$agent_name" \
+  '{
+    version: 1,
+    profile: {name: $profile, kind: "agent", subject: "sibling"},
+    cwd: $cwd,
+    system_prompt_file: $system_prompt_file,
+    identity: {mode: "inherit", agent: $agent_name},
+    unset_env: [],
+    meta: {
+      "drone.profile": $profile,
+      "drone.kind": "agent",
+      "drone.subject": "sibling",
+      "agent.name": $agent_name
+    }
+  }'
