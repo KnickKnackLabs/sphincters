@@ -159,8 +159,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
         prints a JSON spec. The built-in <Code>plain</Code> profile creates a
         stateless system prompt and scrubs ambient identity and common
         side-effect credentials before waking. The built-in <Code>sibling</Code>{" "}
-        profile preserves inherited agent identity for bounded same-agent
-        sibling work such as handoffs or PR watch/repair loops.
+        profile preserves inherited agent identity and defaults to the caller
+        cwd for bounded same-agent sibling work such as handoffs or PR
+        watch/repair loops.
       </Paragraph>
 
       <Details summary="Profile JSON contract">

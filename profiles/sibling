@@ -9,7 +9,17 @@ if [ -z "$out_dir" ]; then
 fi
 
 profile="${SPHINCTERS_PROFILE:-${DRONES_PROFILE:-sibling}}"
-cwd="${SPHINCTERS_CWD:-${DRONES_CWD:-${AGENT_HOME:-${SPHINCTERS_CALLER_PWD:-$PWD}}}}"
+caller_cwd="${SPHINCTERS_CALLER_PWD:-${DRONES_CALLER_PWD:-}}"
+cwd="${SPHINCTERS_CWD:-}"
+if [ -z "$cwd" ]; then
+  cwd="${DRONES_CWD:-}"
+fi
+if [ -z "$cwd" ]; then
+  cwd="$caller_cwd"
+fi
+if [ -z "$cwd" ]; then
+  cwd="${PWD:-${AGENT_HOME:-}}"
+fi
 agent_name="${SPHINCTERS_SIBLING_AGENT:-${AGENT_NAME:-${GIT_AUTHOR_NAME:-${CHAT_IDENTITY:-sibling}}}}"
 system_prompt_file="$out_dir/sibling-system-prompt.md"
 

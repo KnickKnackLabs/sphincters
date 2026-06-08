@@ -75,28 +75,33 @@ load test_helper
   [[ "$(cat "$read_log")" == *"background run"* ]]
 }
 
-@test "sibling profile preserves inherited identity and writes sibling system prompt" {
+@test "sibling profile defaults to caller cwd and preserves inherited identity" {
   out_dir="$BATS_TEST_TMPDIR/sibling-run"
-  cwd="$BATS_TEST_TMPDIR/workspace"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  agent_home="$BATS_TEST_TMPDIR/agent-home"
+  mkdir -p "$caller" "$agent_home"
 
   export GIT_AUTHOR_NAME="baby-joel"
+  export AGENT_HOME="$agent_home"
+  export SPHINCTERS_CALLER_PWD="$caller"
   run sphincters run \
     --dry-run \
     --profile sibling \
     --model fake/model \
     --prompt "watch the PR" \
-    --cwd "$cwd" \
     --out-dir "$out_dir" \
     --json
+  unset SPHINCTERS_CALLER_PWD
+  unset AGENT_HOME
   unset GIT_AUTHOR_NAME
 
   [ "$status" -eq 0 ]
   echo "$output" | jq -e \
-    --arg cwd "$cwd" \
+    --arg caller "$caller" \
     '.profile.name == "sibling"
      and .profile.kind == "agent"
      and .profile.subject == "sibling"
-     and .cwd == $cwd
+     and .cwd == $caller
      and .profile_spec.identity.mode == "inherit"
      and .profile_spec.identity.agent == "baby-joel"
      and (.profile_spec.unset_env | length) == 0
@@ -106,6 +111,27 @@ load test_helper
   system_prompt=$(echo "$output" | jq -r '.files.system_prompt')
   [[ "$(cat "$system_prompt")" == *"sibling worker session for baby-joel"* ]]
   [[ "$(cat "$system_prompt")" == *"parent session owns final integration"* ]]
+}
+
+@test "sibling profile honors explicit cwd over caller cwd" {
+  out_dir="$BATS_TEST_TMPDIR/sibling-explicit-run"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  explicit="$BATS_TEST_TMPDIR/explicit-workspace"
+  mkdir -p "$caller" "$explicit"
+
+  export SPHINCTERS_CALLER_PWD="$caller"
+  run sphincters run \
+    --dry-run \
+    --profile sibling \
+    --model fake/model \
+    --prompt "watch the PR" \
+    --cwd "$explicit" \
+    --out-dir "$out_dir" \
+    --json
+  unset SPHINCTERS_CALLER_PWD
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e --arg explicit "$explicit" '.cwd == $explicit' >/dev/null
 }
 
 @test "run can use an external profile from SPHINCTERS_PROFILE_PATH" {

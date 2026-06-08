@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 16 passing](https://img.shields.io/badge/tests-16%20passing-brightgreen?style=flat)](test/)
+[![tests: 17 passing](https://img.shields.io/badge/tests-17%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
@@ -87,7 +87,7 @@ exports/first-run/
 
 ## Profiles are launch adapters
 
-A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity for bounded same-agent sibling work such as handoffs or PR watch/repair loops.
+A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity and defaults to the caller cwd for bounded same-agent sibling work such as handoffs or PR watch/repair loops.
 
 <details>
 <summary><b>Profile JSON contract</b></summary>

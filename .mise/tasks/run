@@ -20,6 +20,7 @@ source "$MISE_CONFIG_ROOT/lib/drones.sh"
 
 profile="$usage_profile"
 model=$(drones_resolve_model "$usage_model")
+caller_pwd=$(drones_caller_pwd)
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 safe_profile=$(printf '%s' "$profile" | drones_safe_name)
 base="sphincters-run-${safe_profile}-${stamp}-$$"
@@ -69,12 +70,14 @@ if (
   export SPHINCTERS_OUT_DIR="$out_dir"
   export SPHINCTERS_CWD="$requested_cwd"
   export SPHINCTERS_MODEL="$model"
+  export SPHINCTERS_CALLER_PWD="$caller_pwd"
   # Backward-compatible aliases for older local profile experiments.
   export DRONES_PROFILE="$SPHINCTERS_PROFILE"
   export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
   export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
   export DRONES_CWD="$SPHINCTERS_CWD"
   export DRONES_MODEL="$SPHINCTERS_MODEL"
+  export DRONES_CALLER_PWD="$SPHINCTERS_CALLER_PWD"
   "$DRONES_PROFILE_EXEC"
 ) > "$profile_spec_file"; then
   :
@@ -115,7 +118,6 @@ wake_log="$out_dir/$name.wake.log"
 read_log="$out_dir/$name.read.log"
 transcript_file="$out_dir/$name.transcript.txt"
 started_at=$(drones_now_iso)
-caller_pwd=$(drones_caller_pwd)
 
 profile_rc=0
 new_rc=-1
