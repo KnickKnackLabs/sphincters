@@ -87,7 +87,7 @@ exports/first-run/
 
 ## Profiles are launch adapters
 
-A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity and defaults to the caller cwd for bounded same-agent sibling work such as handoffs or PR watch/repair loops.
+A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity, defaults to the caller cwd, and frames the launched session as same-agent sibling/continuation work rather than a subordinate worker.
 
 <details>
 <summary><b>Profile JSON contract</b></summary>

@@ -109,8 +109,8 @@ load test_helper
     >/dev/null
 
   system_prompt=$(echo "$output" | jq -r '.files.system_prompt')
-  [[ "$(cat "$system_prompt")" == *"sibling worker session for baby-joel"* ]]
-  [[ "$(cat "$system_prompt")" == *"parent session owns final integration"* ]]
+  [[ "$(cat "$system_prompt")" == *"baby-joel in a same-agent sibling session"* ]]
+  [[ "$(cat "$system_prompt")" == *"subordinate worker"* ]]
 }
 
 @test "sibling profile honors explicit cwd over caller cwd" {
