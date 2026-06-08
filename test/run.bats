@@ -4,6 +4,29 @@ bats_require_minimum_version 1.5.0
 
 load test_helper
 
+make_mock_sessions() {
+  export SPHINCTERS_SESSIONS_LOG="$BATS_TEST_TMPDIR/sessions.log"
+  export SPHINCTERS_SESSIONS_BIN="$BATS_TEST_TMPDIR/sessions"
+  cat > "$SPHINCTERS_SESSIONS_BIN" <<'SESSIONS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${SPHINCTERS_SESSIONS_LOG:?}"
+case "${1:-}" in
+  new|wake)
+    exit 0
+    ;;
+  read)
+    printf 'mock transcript for %s\n' "${2:-}"
+    ;;
+  *)
+    echo "unexpected sessions command: ${1:-}" >&2
+    exit 64
+    ;;
+esac
+SESSIONS
+  chmod +x "$SPHINCTERS_SESSIONS_BIN"
+}
+
 @test "run --dry-run writes result JSON" {
   out_dir="$BATS_TEST_TMPDIR/run"
   run sphincters run --dry-run --model fake/model --prompt "hello" --out-dir "$out_dir" --json
@@ -73,6 +96,73 @@ load test_helper
 
   read_log=$(echo "$output" | jq -r '.files.logs.read')
   [[ "$(cat "$read_log")" == *"background run"* ]]
+}
+
+@test "run invokes headless sessions wake by default" {
+  make_mock_sessions
+  out_dir="$BATS_TEST_TMPDIR/headless-run"
+
+  run sphincters run \
+    --model fake/model \
+    --prompt "hello" \
+    --out-dir "$out_dir" \
+    --name headless-run \
+    --json
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e \
+    '.mode == "headless"
+     and .background == false
+     and .read.skipped == false
+     and .rc.new == 0
+     and .rc.wake == 0
+     and .rc.read == 0' \
+    >/dev/null
+
+  wake_line=$(sed -n '2p' "$SPHINCTERS_SESSIONS_LOG")
+  [[ "$wake_line" == wake\ headless-run* ]]
+  [[ "$wake_line" == *"--headless"* ]]
+  [[ "$wake_line" != *"--background"* ]]
+
+  transcript=$(echo "$output" | jq -r '.files.transcript')
+  [ "$(cat "$transcript")" = "mock transcript for headless-run" ]
+}
+
+@test "run --interactive --background starts attachable interactive wake" {
+  make_mock_sessions
+  out_dir="$BATS_TEST_TMPDIR/interactive-background-run"
+
+  run sphincters run \
+    --interactive \
+    --background \
+    --model fake/model \
+    --prompt "hello" \
+    --out-dir "$out_dir" \
+    --name interactive-desk \
+    --json
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e \
+    '.mode == "interactive"
+     and .background == true
+     and .read.skipped == true
+     and .handles.attach == "shell attach interactive-desk"
+     and .rc.new == 0
+     and .rc.wake == 0
+     and .rc.read == 0' \
+    >/dev/null
+
+  wake_line=$(sed -n '2p' "$SPHINCTERS_SESSIONS_LOG")
+  [[ "$wake_line" == wake\ interactive-desk* ]]
+  [[ "$wake_line" != *"--headless"* ]]
+  [[ "$wake_line" == *"--background"* ]]
+  [[ "$wake_line" == *"wait for the operator before side effects"* ]]
+}
+
+@test "run --interactive foreground requires a TTY" {
+  run sphincters run --interactive --model fake/model --prompt "hello" --json
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--interactive without --background requires a TTY"* ]]
 }
 
 @test "sibling profile defaults to caller cwd and preserves inherited identity" {
