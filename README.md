@@ -78,6 +78,19 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 
 The core abstraction is worker/profile/session. A profile can describe a plain model call today and can later describe an agent identity, long-running process, or re-wake policy without changing the runner's record format.
 
+## Run modes
+
+`sphincters run` has two separate axes: session mode and process mode. Runs are **headless** by default; `--interactive` makes the session human-present. Runs are **foreground** by default; `--background` launches through shell/zmx and returns handles.
+
+| Command shape | What happens | Use when |
+| --- | --- | --- |
+| `sphincters run ...` | Headless foreground run; waits, then collects transcript. | One bounded worker answer now. |
+| `sphincters run --background ...` | Headless background run; returns attach/status/wait/read handles and skips transcript collection. | A sibling scout or worker should run while the parent continues. |
+| `sphincters run --interactive --background ...` | Interactive background session; returns an attachable desk handle. | Or or a lead agent may join the sibling and talk. |
+| `sphincters run --interactive ...` | Interactive foreground session; requires a TTY and blocks until it exits. | A human intentionally starts sphincters from a terminal and wants to enter that session immediately. |
+
+Foreground interactive mode fails loudly without a TTY. Agents should normally use `--interactive --background` for attachable sibling desks.
+
 ## Run records
 
 Every run writes a directory that a human or parent process can inspect. If a worker failed, the logs are already separated by phase. If it succeeded, the transcript and result JSON point at each other.

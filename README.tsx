@@ -153,6 +153,32 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
       </Paragraph>
     </Section>
 
+    <Section title="Run modes">
+      <Paragraph>
+        <Code>sphincters run</Code>
+        {" has two separate axes: session mode and process mode. Runs are "}
+        <Bold>headless</Bold>
+        {" by default; "}
+        <Code>--interactive</Code>
+        {" makes the session human-present. Runs are "}
+        <Bold>foreground</Bold>
+        {" by default; "}
+        <Code>--background</Code>
+        {" launches through shell/zmx and returns handles."}
+      </Paragraph>
+
+      <Raw>{`| Command shape | What happens | Use when |
+| --- | --- | --- |
+| \`sphincters run ...\` | Headless foreground run; waits, then collects transcript. | One bounded worker answer now. |
+| \`sphincters run --background ...\` | Headless background run; returns attach/status/wait/read handles and skips transcript collection. | A sibling scout or worker should run while the parent continues. |
+| \`sphincters run --interactive --background ...\` | Interactive background session; returns an attachable desk handle. | Or or a lead agent may join the sibling and talk. |
+| \`sphincters run --interactive ...\` | Interactive foreground session; requires a TTY and blocks until it exits. | A human intentionally starts sphincters from a terminal and wants to enter that session immediately. |
+
+Foreground interactive mode fails loudly without a TTY. Agents should normally use \`--interactive --background\` for attachable sibling desks.
+
+`}</Raw>
+    </Section>
+
     <Section title="Run records">
       <Paragraph>
         Every run writes a directory that a human or parent process can inspect.
