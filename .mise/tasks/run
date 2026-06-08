@@ -187,8 +187,6 @@ else
     )
     if [ "$mode" = "headless" ]; then
       wake_cmd+=(--headless --message "Read the sphincters prompt context and complete the task.")
-    else
-      wake_cmd+=(--message "Read the sphincters prompt context, orient yourself, and wait for the operator before side effects.")
     fi
     wake_cmd+=(
       --meta "wake.purpose=sphincters-run"

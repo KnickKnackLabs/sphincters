@@ -155,8 +155,9 @@ SESSIONS
   wake_line=$(sed -n '2p' "$SPHINCTERS_SESSIONS_LOG")
   [[ "$wake_line" == wake\ interactive-desk* ]]
   [[ "$wake_line" != *"--headless"* ]]
+  [[ "$wake_line" != *"--message"* ]]
+  [[ "$wake_line" == *"--context-file"* ]]
   [[ "$wake_line" == *"--background"* ]]
-  [[ "$wake_line" == *"wait for the operator before side effects"* ]]
 }
 
 @test "run --interactive foreground requires a TTY" {
