@@ -73,9 +73,9 @@ if (
     --name "$name" \
     --result-file "$run_result_file" \
     --json \
-    "${cwd_args[@]}" \
-    "${dry_args[@]}" \
-    "${prompt_args[@]}"
+    ${cwd_args[@]+"${cwd_args[@]}"} \
+    ${dry_args[@]+"${dry_args[@]}"} \
+    ${prompt_args[@]+"${prompt_args[@]}"}
 ) >"$run_stdout" 2>"$run_stderr"; then
   run_rc=0
 else
