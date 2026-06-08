@@ -10,10 +10,12 @@
 #USAGE flag "--result-file <file>" default="" help="Where to write result JSON (default: <out-dir>/<session>.result.json)"
 #USAGE flag "--json" default=#false help="Print result JSON to stdout"
 #USAGE flag "--background" default=#false help="Return after wake with attach/result handles instead of blocking on sessions read"
+#USAGE flag "--interactive" default=#false help="Wake an interactive session instead of a headless task; requires a TTY unless --background is used"
 #USAGE flag "--dry-run" default=#false help="Prepare files/result without launching sessions"
 #USAGE example "mise run run --dry-run --model fake/model --prompt 'Say hello' --json" header="Prepare a run without launching a model"
 #USAGE example "mise run run --profile plain --model openai-codex/gpt-5.5 --prompt-file task.md" header="Run the default plain profile"
 #USAGE example "mise run run --profile sibling --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch a non-blocking sibling worker and print attach handles"
+#USAGE example "mise run run --profile sibling --interactive --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch an attachable interactive sibling desk"
 set -euo pipefail
 
 source "$MISE_CONFIG_ROOT/lib/drones.sh"
@@ -30,6 +32,19 @@ name="${usage_name:-$base}"
 if ! drones_validate_session_name "$name"; then
   exit 2
 fi
+
+mode="headless"
+if [ "$usage_interactive" = "true" ]; then
+  mode="interactive"
+fi
+if [ "$mode" = "interactive" ] && [ "$usage_background" != "true" ] && [ "$usage_dry_run" != "true" ]; then
+  if [ ! -t 0 ] || [ ! -t 1 ]; then
+    echo "error: --interactive without --background requires a TTY; use --interactive --background for an attachable desk" >&2
+    exit 2
+  fi
+fi
+
+sessions_bin="${SPHINCTERS_SESSIONS_BIN:-${DRONES_SESSIONS_BIN:-sessions}}"
 
 if [ -n "$usage_result_file" ]; then
   result_file=$(drones_resolve_path "$usage_result_file")
@@ -144,7 +159,7 @@ if [ "$usage_dry_run" = "true" ]; then
   printf 'dry run transcript placeholder\n' > "$transcript_file"
 else
   new_cmd=(
-    sessions new "$name"
+    "$sessions_bin" new "$name"
     --cwd "$cwd"
     --meta "drone.tool=sphincters"
     --meta "drone.profile=$profile"
@@ -166,11 +181,16 @@ else
 
   if [ "$new_rc" -eq 0 ]; then
     wake_cmd=(
-      sessions wake "$name"
-      --headless
+      "$sessions_bin" wake "$name"
       --model "$model"
       --context-file "$prompt_file"
-      --message "Read the sphincters prompt context and complete the task."
+    )
+    if [ "$mode" = "headless" ]; then
+      wake_cmd+=(--headless --message "Read the sphincters prompt context and complete the task.")
+    else
+      wake_cmd+=(--message "Read the sphincters prompt context, orient yourself, and wait for the operator before side effects.")
+    fi
+    wake_cmd+=(
       --meta "wake.purpose=sphincters-run"
       --meta "drone.profile=$profile"
       --meta "drone.kind=$profile_kind"
@@ -214,7 +234,7 @@ else
         printf 'read later: %s\n' "$sessions_read_command"
       } >"$read_log"
       printf 'background run transcript not collected; use %s after completion\n' "$sessions_read_command" >"$transcript_file"
-    elif sessions read "$name" >"$transcript_file" 2>"$read_log"; then
+    elif "$sessions_bin" read "$name" >"$transcript_file" 2>"$read_log"; then
       read_rc=0
     else
       read_rc=$?
@@ -231,6 +251,7 @@ jq -n \
   --arg type "sphincters-run" \
   --arg session "$name" \
   --arg model "$model" \
+  --arg mode "$mode" \
   --arg caller_pwd "$caller_pwd" \
   --arg out_dir "$out_dir" \
   --arg cwd "$cwd" \
@@ -260,6 +281,7 @@ jq -n \
     session: $session,
     profile: $spec[0].profile,
     model: $model,
+    mode: $mode,
     dry_run: $dry_run,
     background: $background,
     caller_pwd: $caller_pwd,
@@ -307,6 +329,7 @@ else
   printf '  profile:    %s (%s)\n' "$profile" "$profile_kind"
   printf '  subject:    %s\n' "$profile_subject"
   printf '  model:      %s\n' "$model"
+  printf '  mode:       %s\n' "$mode"
   printf '  dry run:    %s\n' "$usage_dry_run"
   printf '  background: %s\n' "$usage_background"
   printf '  out:        %s\n' "$out_dir"

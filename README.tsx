@@ -33,10 +33,10 @@ const boundaryDiagram = [
   "             └─────────┬────────┘",
   "                       │ profile.json",
   "                       ▼",
-  "  prompt.md ──▶ sessions new ──▶ sessions wake --headless ──▶ sessions read",
-  "                       │                    │                    │",
-  "                       │                    │                    └─ skipped with --background",
-  "                       └────────────────────┴────────────────────┘",
+  "  prompt.md ──▶ sessions new ──▶ sessions wake [--headless] ──▶ sessions read",
+  "                       │                    │                       │",
+  "                       │                    │                       └─ skipped with --background",
+  "                       └────────────────────┴───────────────────────┘",
   "                                            ▼",
   "          logs + transcript/result JSON + optional attach handles",
 ].join("\n");
@@ -114,6 +114,15 @@ sphincters run \\
   --prompt-file handoff.md \\
   --json
 
+# Start an interactive same-agent sibling desk for live attach
+sphincters run \\
+  --profile sibling \\
+  --interactive \\
+  --background \\
+  --model openai-codex/gpt-5.5 \\
+  --prompt-file handoff.md \\
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</CodeBlock>
     </Section>
@@ -124,10 +133,12 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
         {" is a small runner for worker sessions. The runner owns "}
         <Code>sessions new</Code>
         {", "}
-        <Code>sessions wake --headless</Code>
+        <Code>sessions wake</Code>
         {", "}
         <Code>sessions read</Code>
-        {", logging, and result JSON. With "}
+        {", logging, and result JSON. Runs are headless by default; "}
+        <Code>--interactive</Code>
+        {" wakes a human-present session instead. With "}
         <Code>--background</Code>
         {", the runner skips the blocking read step and returns attach/read handles instead. Profiles describe how the worker should be launched."}
       </Paragraph>
@@ -175,7 +186,9 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
           <Bold>run</Bold>
           {" — send a prompt through a profile into a session, with logs and transcript; add "}
           <Code>--background</Code>
-          {" to return attach handles without waiting for transcript collection."}
+          {" to return attach handles without waiting for transcript collection, or "}
+          <Code>--interactive --background</Code>
+          {" to launch an attachable human-present sibling desk."}
         </Item>
         <Item>
           <Bold>ping</Bold>

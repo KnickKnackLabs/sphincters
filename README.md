@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 17 passing](https://img.shields.io/badge/tests-17%20passing-brightgreen?style=flat)](test/)
+[![tests: 20 passing](https://img.shields.io/badge/tests-20%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
@@ -42,13 +42,22 @@ sphincters run \
   --prompt-file handoff.md \
   --json
 
+# Start an interactive same-agent sibling desk for live attach
+sphincters run \
+  --profile sibling \
+  --interactive \
+  --background \
+  --model openai-codex/gpt-5.5 \
+  --prompt-file handoff.md \
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 ```
 
 ## What it is
 
-`sphincters` is a small runner for worker sessions. The runner owns `sessions new`, `sessions wake --headless`, `sessions read`, logging, and result JSON. With `--background`, the runner skips the blocking read step and returns attach/read handles instead. Profiles describe how the worker should be launched.
+`sphincters` is a small runner for worker sessions. The runner owns `sessions new`, `sessions wake`, `sessions read`, logging, and result JSON. Runs are headless by default; `--interactive` wakes a human-present session instead. With `--background`, the runner skips the blocking read step and returns attach/read handles instead. Profiles describe how the worker should be launched.
 
 ```
                  sphincters run
@@ -59,10 +68,10 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
              └─────────┬────────┘
                        │ profile.json
                        ▼
-  prompt.md ──▶ sessions new ──▶ sessions wake --headless ──▶ sessions read
-                       │                    │                    │
-                       │                    │                    └─ skipped with --background
-                       └────────────────────┴────────────────────┘
+  prompt.md ──▶ sessions new ──▶ sessions wake [--headless] ──▶ sessions read
+                       │                    │                       │
+                       │                    │                       └─ skipped with --background
+                       └────────────────────┴───────────────────────┘
                                             ▼
           logs + transcript/result JSON + optional attach handles
 ```
@@ -108,7 +117,7 @@ A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It pr
 
 ## Three useful commands
 
-- **run** — send a prompt through a profile into a session, with logs and transcript; add `--background` to return attach handles without waiting for transcript collection.
+- **run** — send a prompt through a profile into a session, with logs and transcript; add `--background` to return attach handles without waiting for transcript collection, or `--interactive --background` to launch an attachable human-present sibling desk.
 - **ping** — a deterministic `DRONE_ACK <session>` smoke test wrapped around `run`.
 - **bench** — repeated `ping` runs with `--count` / `--parallel` and timing stats. A harness check, not a swarm coordinator.
 
