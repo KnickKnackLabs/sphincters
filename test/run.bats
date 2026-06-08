@@ -49,6 +49,91 @@ load test_helper
   echo "$output" | jq -e '.model == "fake/from-env"' >/dev/null
 }
 
+@test "run --background dry-run returns attach handles and skips transcript read" {
+  out_dir="$BATS_TEST_TMPDIR/background-run"
+  run sphincters run \
+    --dry-run \
+    --background \
+    --model fake/model \
+    --prompt "hello" \
+    --out-dir "$out_dir" \
+    --name sibling-watch \
+    --json
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e \
+    '.background == true
+     and .read.skipped == true
+     and .handles.attach == "shell attach sibling-watch"
+     and .handles.status == "shell status sibling-watch"
+     and .handles.wait == "shell wait sibling-watch"
+     and .handles.read == "sessions read sibling-watch"
+     and .rc.read == 0' \
+    >/dev/null
+
+  read_log=$(echo "$output" | jq -r '.files.logs.read')
+  [[ "$(cat "$read_log")" == *"background run"* ]]
+}
+
+@test "sibling profile defaults to caller cwd and preserves inherited identity" {
+  out_dir="$BATS_TEST_TMPDIR/sibling-run"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  agent_home="$BATS_TEST_TMPDIR/agent-home"
+  mkdir -p "$caller" "$agent_home"
+
+  export GIT_AUTHOR_NAME="baby-joel"
+  export AGENT_HOME="$agent_home"
+  export SPHINCTERS_CALLER_PWD="$caller"
+  run sphincters run \
+    --dry-run \
+    --profile sibling \
+    --model fake/model \
+    --prompt "watch the PR" \
+    --out-dir "$out_dir" \
+    --json
+  unset SPHINCTERS_CALLER_PWD
+  unset AGENT_HOME
+  unset GIT_AUTHOR_NAME
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e \
+    --arg caller "$caller" \
+    '.profile.name == "sibling"
+     and .profile.kind == "agent"
+     and .profile.subject == "sibling"
+     and .cwd == $caller
+     and .profile_spec.identity.mode == "inherit"
+     and .profile_spec.identity.agent == "baby-joel"
+     and (.profile_spec.unset_env | length) == 0
+     and .profile_spec.meta["agent.name"] == "baby-joel"' \
+    >/dev/null
+
+  system_prompt=$(echo "$output" | jq -r '.files.system_prompt')
+  [[ "$(cat "$system_prompt")" == *"baby-joel in a same-agent sibling session"* ]]
+  [[ "$(cat "$system_prompt")" == *"subordinate worker"* ]]
+}
+
+@test "sibling profile honors explicit cwd over caller cwd" {
+  out_dir="$BATS_TEST_TMPDIR/sibling-explicit-run"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  explicit="$BATS_TEST_TMPDIR/explicit-workspace"
+  mkdir -p "$caller" "$explicit"
+
+  export SPHINCTERS_CALLER_PWD="$caller"
+  run sphincters run \
+    --dry-run \
+    --profile sibling \
+    --model fake/model \
+    --prompt "watch the PR" \
+    --cwd "$explicit" \
+    --out-dir "$out_dir" \
+    --json
+  unset SPHINCTERS_CALLER_PWD
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e --arg explicit "$explicit" '.cwd == $explicit' >/dev/null
+}
+
 @test "run can use an external profile from SPHINCTERS_PROFILE_PATH" {
   profile_dir="$BATS_TEST_TMPDIR/profiles"
   mkdir -p "$profile_dir"

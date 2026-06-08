@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Emit launch spec for a same-agent sibling worker profile.
+set -euo pipefail
+
+out_dir="${SPHINCTERS_OUT_DIR:-${DRONES_OUT_DIR:-}}"
+if [ -z "$out_dir" ]; then
+  echo "error: SPHINCTERS_OUT_DIR required" >&2
+  exit 2
+fi
+
+profile="${SPHINCTERS_PROFILE:-${DRONES_PROFILE:-sibling}}"
+caller_cwd="${SPHINCTERS_CALLER_PWD:-${DRONES_CALLER_PWD:-}}"
+cwd="${SPHINCTERS_CWD:-}"
+if [ -z "$cwd" ]; then
+  cwd="${DRONES_CWD:-}"
+fi
+if [ -z "$cwd" ]; then
+  cwd="$caller_cwd"
+fi
+if [ -z "$cwd" ]; then
+  cwd="${PWD:-${AGENT_HOME:-}}"
+fi
+agent_name="${SPHINCTERS_SIBLING_AGENT:-${AGENT_NAME:-${GIT_AUTHOR_NAME:-${CHAT_IDENTITY:-sibling}}}}"
+system_prompt_file="$out_dir/sibling-system-prompt.md"
+
+mkdir -p "$cwd"
+cat > "$system_prompt_file" <<PROMPT
+You are ${agent_name} in a same-agent sibling session.
+
+This profile establishes relationship and coordination boundaries only. The
+provided task packet supplies the actual task, scope, allowed side effects,
+completion signal, and review path.
+
+Another ${agent_name} session may be active at the same time. You are not a
+subordinate worker; bring the same judgment and care as the parent session. If
+the packet says this is a handoff and the parent session is stopping, treat this
+as self-continuation. If the packet says this is concurrent sibling work,
+coordinate so you do not race the parent or other sessions.
+
+Prefer an isolated desk/worktree/clone when the packet or local tooling provides
+one. Otherwise avoid conflicting writes and keep durable side effects inside the
+packet's explicit boundary. Before durable side effects, verify the active
+identity in a non-secret way when practical.
+
+Do not merge, publish releases, rotate credentials, or change global machine
+configuration unless the packet explicitly authorizes it. Stop and report when
+the task is complete or blocked.
+PROMPT
+
+jq -n \
+  --arg profile "$profile" \
+  --arg cwd "$cwd" \
+  --arg system_prompt_file "$system_prompt_file" \
+  --arg agent_name "$agent_name" \
+  '{
+    version: 1,
+    profile: {name: $profile, kind: "agent", subject: "sibling"},
+    cwd: $cwd,
+    system_prompt_file: $system_prompt_file,
+    identity: {mode: "inherit", agent: $agent_name},
+    unset_env: [],
+    meta: {
+      "drone.profile": $profile,
+      "drone.kind": "agent",
+      "drone.subject": "sibling",
+      "agent.name": $agent_name
+    }
+  }'

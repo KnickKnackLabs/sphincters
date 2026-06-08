@@ -9,15 +9,18 @@
 #USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
 #USAGE flag "--result-file <file>" default="" help="Where to write result JSON (default: <out-dir>/<session>.result.json)"
 #USAGE flag "--json" default=#false help="Print result JSON to stdout"
+#USAGE flag "--background" default=#false help="Return after wake with attach/result handles instead of blocking on sessions read"
 #USAGE flag "--dry-run" default=#false help="Prepare files/result without launching sessions"
 #USAGE example "mise run run --dry-run --model fake/model --prompt 'Say hello' --json" header="Prepare a run without launching a model"
 #USAGE example "mise run run --profile plain --model openai-codex/gpt-5.5 --prompt-file task.md" header="Run the default plain profile"
+#USAGE example "mise run run --profile sibling --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch a non-blocking sibling worker and print attach handles"
 set -euo pipefail
 
 source "$MISE_CONFIG_ROOT/lib/drones.sh"
 
 profile="$usage_profile"
 model=$(drones_resolve_model "$usage_model")
+caller_pwd=$(drones_caller_pwd)
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 safe_profile=$(printf '%s' "$profile" | drones_safe_name)
 base="sphincters-run-${safe_profile}-${stamp}-$$"
@@ -67,12 +70,14 @@ if (
   export SPHINCTERS_OUT_DIR="$out_dir"
   export SPHINCTERS_CWD="$requested_cwd"
   export SPHINCTERS_MODEL="$model"
+  export SPHINCTERS_CALLER_PWD="$caller_pwd"
   # Backward-compatible aliases for older local profile experiments.
   export DRONES_PROFILE="$SPHINCTERS_PROFILE"
   export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
   export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
   export DRONES_CWD="$SPHINCTERS_CWD"
   export DRONES_MODEL="$SPHINCTERS_MODEL"
+  export DRONES_CALLER_PWD="$SPHINCTERS_CALLER_PWD"
   "$DRONES_PROFILE_EXEC"
 ) > "$profile_spec_file"; then
   :
@@ -113,12 +118,16 @@ wake_log="$out_dir/$name.wake.log"
 read_log="$out_dir/$name.read.log"
 transcript_file="$out_dir/$name.transcript.txt"
 started_at=$(drones_now_iso)
-caller_pwd=$(drones_caller_pwd)
 
 profile_rc=0
 new_rc=-1
 wake_rc=-1
 read_rc=-1
+read_skipped=false
+shell_attach_command="shell attach $name"
+shell_status_command="shell status $name"
+shell_wait_command="shell wait $name"
+sessions_read_command="sessions read $name"
 
 if [ "$usage_dry_run" = "true" ]; then
   new_rc=0
@@ -126,7 +135,12 @@ if [ "$usage_dry_run" = "true" ]; then
   read_rc=0
   printf 'dry run: sessions new skipped\n' > "$new_log"
   printf 'dry run: sessions wake skipped\n' > "$wake_log"
-  printf 'dry run: sessions read skipped\n' > "$read_log"
+  if [ "$usage_background" = "true" ]; then
+    read_skipped=true
+    printf 'dry run: sessions read skipped for background run\n' > "$read_log"
+  else
+    printf 'dry run: sessions read skipped\n' > "$read_log"
+  fi
   printf 'dry run transcript placeholder\n' > "$transcript_file"
 else
   new_cmd=(
@@ -151,16 +165,19 @@ else
   fi
 
   if [ "$new_rc" -eq 0 ]; then
-    prompt=$(cat "$prompt_file")
     wake_cmd=(
       sessions wake "$name"
       --headless
       --model "$model"
-      --message "$prompt"
+      --context-file "$prompt_file"
+      --message "Read the sphincters prompt context and complete the task."
       --meta "wake.purpose=sphincters-run"
       --meta "drone.profile=$profile"
       --meta "drone.kind=$profile_kind"
     )
+    if [ "$usage_background" = "true" ]; then
+      wake_cmd+=(--background)
+    fi
 
     env_cmd=(env)
     while IFS= read -r env_name; do
@@ -184,11 +201,20 @@ else
     else
       wake_rc=$?
     fi
-    unset prompt system_prompt
+    unset system_prompt
   fi
 
   if [ "$new_rc" -eq 0 ]; then
-    if sessions read "$name" >"$transcript_file" 2>"$read_log"; then
+    if [ "$usage_background" = "true" ]; then
+      read_rc=0
+      read_skipped=true
+      {
+        printf 'background run: sessions read skipped\n'
+        printf 'attach: %s\n' "$shell_attach_command"
+        printf 'read later: %s\n' "$sessions_read_command"
+      } >"$read_log"
+      printf 'background run transcript not collected; use %s after completion\n' "$sessions_read_command" >"$transcript_file"
+    elif sessions read "$name" >"$transcript_file" 2>"$read_log"; then
       read_rc=0
     else
       read_rc=$?
@@ -213,12 +239,18 @@ jq -n \
   --arg system_prompt_file "$system_prompt_file" \
   --arg result_file "$result_file" \
   --arg transcript_file "$transcript_file" \
+  --arg shell_attach_command "$shell_attach_command" \
+  --arg shell_status_command "$shell_status_command" \
+  --arg shell_wait_command "$shell_wait_command" \
+  --arg sessions_read_command "$sessions_read_command" \
   --arg new_log "$new_log" \
   --arg wake_log "$wake_log" \
   --arg read_log "$read_log" \
   --arg started_at "$started_at" \
   --arg finished_at "$finished_at" \
   --argjson dry_run "$usage_dry_run" \
+  --argjson background "$usage_background" \
+  --argjson read_skipped "$read_skipped" \
   --argjson profile_rc "$profile_rc" \
   --argjson new_rc "$new_rc" \
   --argjson wake_rc "$wake_rc" \
@@ -229,6 +261,7 @@ jq -n \
     profile: $spec[0].profile,
     model: $model,
     dry_run: $dry_run,
+    background: $background,
     caller_pwd: $caller_pwd,
     cwd: $cwd,
     out_dir: $out_dir,
@@ -241,6 +274,13 @@ jq -n \
       transcript: $transcript_file,
       logs: {new: $new_log, wake: $wake_log, read: $read_log}
     },
+    handles: {
+      attach: $shell_attach_command,
+      status: $shell_status_command,
+      wait: $shell_wait_command,
+      read: $sessions_read_command
+    },
+    read: {skipped: $read_skipped},
     started_at: $started_at,
     finished_at: $finished_at,
     rc: {profile: $profile_rc, new: $new_rc, wake: $wake_rc, read: $read_rc}
@@ -268,8 +308,13 @@ else
   printf '  subject:    %s\n' "$profile_subject"
   printf '  model:      %s\n' "$model"
   printf '  dry run:    %s\n' "$usage_dry_run"
+  printf '  background: %s\n' "$usage_background"
   printf '  out:        %s\n' "$out_dir"
   printf '  result:     %s\n' "$result_file"
+  if [ "$usage_background" = "true" ]; then
+    printf '  attach:     %s\n' "$shell_attach_command"
+    printf '  read later: %s\n' "$sessions_read_command"
+  fi
   printf '  transcript: %s\n' "$transcript_file"
   printf '  rc:         profile=%s new=%s wake=%s read=%s\n' "$profile_rc" "$new_rc" "$wake_rc" "$read_rc"
 fi
