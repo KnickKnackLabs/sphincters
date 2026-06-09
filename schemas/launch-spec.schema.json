@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KnickKnackLabs/sphincters/schemas/launch-spec.schema.json",
+  "title": "sphincters composed launch spec",
+  "description": "Final launch context produced by composing one or more sphincters profiles.",
+  "type": "object",
+  "required": [
+    "version",
+    "profile",
+    "profiles",
+    "profile_stack",
+    "cwd",
+    "system_prompt_file",
+    "identity",
+    "unset_env",
+    "env",
+    "meta",
+    "outputs",
+    "profile_outputs",
+    "cleanup",
+    "profile_spec_files"
+  ],
+  "properties": {
+    "version": {"const": 1},
+    "profile": {"$ref": "#/$defs/profile"},
+    "profiles": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/profile"},
+      "minItems": 1
+    },
+    "profile_stack": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "cwd": {"type": "string", "minLength": 1},
+    "system_prompt_file": {"type": "string"},
+    "identity": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object"}
+      ]
+    },
+    "unset_env": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/envName"},
+      "uniqueItems": true
+    },
+    "env": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/envName"},
+      "additionalProperties": {"type": "string"}
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/metaValue"}
+    },
+    "outputs": {"type": "object"},
+    "profile_outputs": {
+      "type": "object",
+      "additionalProperties": {"type": "object"}
+    },
+    "cleanup": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["profile", "cleanup"],
+        "properties": {
+          "profile": {"type": "string", "minLength": 1},
+          "cleanup": {"type": "object"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "profile_spec_files": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["name", "kind", "subject"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "metaValue": {
+      "type": ["string", "number", "integer", "boolean", "null"]
+    }
+  }
+}

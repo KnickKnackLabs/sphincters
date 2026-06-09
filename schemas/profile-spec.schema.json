@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KnickKnackLabs/sphincters/schemas/profile-spec.schema.json",
+  "title": "sphincters profile spec",
+  "description": "Launch-context contribution emitted by one sphincters profile.",
+  "type": "object",
+  "required": ["version", "profile"],
+  "properties": {
+    "version": {"const": 1},
+    "profile": {"$ref": "#/$defs/profile"},
+    "cwd": {"type": "string"},
+    "system_prompt_file": {"type": "string"},
+    "identity": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object"}
+      ]
+    },
+    "unset_env": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/envName"},
+      "uniqueItems": true,
+      "default": []
+    },
+    "env": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/envName"},
+      "additionalProperties": {"type": "string"},
+      "default": {}
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/metaValue"},
+      "default": {}
+    },
+    "outputs": {
+      "type": "object",
+      "default": {}
+    },
+    "cleanup": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["name", "kind", "subject"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "metaValue": {
+      "type": ["string", "number", "integer", "boolean", "null"]
+    }
+  }
+}

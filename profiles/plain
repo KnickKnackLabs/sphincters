@@ -41,9 +41,7 @@ jq -n \
       "CHAT_IDENTITY",
       "SHIMMER_OS_USER"
     ],
-    meta: {
-      "drone.profile": $profile,
-      "drone.kind": "plain",
-      "drone.subject": "drone"
-    }
+    env: {},
+    meta: {},
+    outputs: {}
   }'

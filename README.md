@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 20 passing](https://img.shields.io/badge/tests-20%20passing-brightgreen?style=flat)](test/)
+[![tests: 24 passing](https://img.shields.io/badge/tests-24%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
@@ -51,6 +51,16 @@ sphincters run \
   --prompt-file handoff.md \
   --json
 
+# Compose workspace + identity decorators in deterministic CLI order
+sphincters run \
+  --profile desk \
+  --profile sibling \
+  --interactive \
+  --background \
+  --model openai-codex/gpt-5.5 \
+  --prompt-file handoff.md \
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
 ```
@@ -64,19 +74,19 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json
                        │
                        ▼
              ┌──────────────────┐
-             │ launch profile   │  cwd / system prompt / env scrub / meta
+             │ profile stack    │  CLI order: desk → sibling
              └─────────┬────────┘
-                       │ profile.json
+                       │ composed profile.json
                        ▼
   prompt.md ──▶ sessions new ──▶ sessions wake [--headless] ──▶ sessions read
                        │                    │                       │
                        │                    │                       └─ skipped with --background
                        └────────────────────┴───────────────────────┘
                                             ▼
-          logs + transcript/result JSON + optional attach handles
+      logs + transcript/result JSON + profile outputs + attach handles
 ```
 
-The core abstraction is worker/profile/session. A profile can describe a plain model call today and can later describe an agent identity, long-running process, or re-wake policy without changing the runner's record format.
+The core abstraction is worker/profile/session. Profiles are applied in the order supplied on the CLI and contribute to one shared launch context. The runner launches exactly once from that composed context and records both the profile stack and each profile's outputs.
 
 ## Run modes
 
@@ -97,19 +107,23 @@ Every run writes a directory that a human or parent process can inspect. If a wo
 
 ```
 exports/first-run/
-├── sphincters-run-plain-...prompt.md
-├── sphincters-run-plain-...profile.json
-├── plain-system-prompt.md
-├── sphincters-run-plain-...new.log
-├── sphincters-run-plain-...wake.log
-├── sphincters-run-plain-...read.log
-├── sphincters-run-plain-...transcript.txt
-└── sphincters-run-plain-...result.json
+├── sphincters-run-desk-sibling-...prompt.md
+├── sphincters-run-desk-sibling-...profile.0.desk.json
+├── sphincters-run-desk-sibling-...profile.1.sibling.json
+├── sphincters-run-desk-sibling-...profile.json
+├── sibling-system-prompt.md
+├── sphincters-run-desk-sibling-...new.log
+├── sphincters-run-desk-sibling-...wake.log
+├── sphincters-run-desk-sibling-...read.log
+├── sphincters-run-desk-sibling-...transcript.txt
+└── sphincters-run-desk-sibling-...result.json
 ```
 
 ## Profiles are launch adapters
 
-A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. The built-in `plain` profile creates a stateless system prompt and scrubs ambient identity and common side-effect credentials before waking. The built-in `sibling` profile preserves inherited agent identity, defaults to the caller cwd, and frames the launched session as same-agent sibling/continuation work rather than a subordinate worker.
+A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It prepares launch context and prints a JSON spec. `plain` creates a stateless system prompt and scrubs ambient identity. `desk` creates or selects a desk, injects `DESK_ROOT` and `DESKS_ROOT`, and records cleanup hints. `sibling` preserves inherited agent identity, defaults to the caller cwd, and frames the launched session as same-agent sibling/continuation work rather than a subordinate worker.
+
+Composition is deterministic: `--profile desk --profile sibling` applies `desk` first and `sibling` second. Important fields such as cwd, identity, env keys, metadata, and outputs fail on conflicting writes instead of silently taking the last value. The desk profile uses the repo-pinned `desks` tool by default; set `SPHINCTERS_DESKS_BIN` to point at a stub or alternate binary.
 
 <details>
 <summary><b>Profile JSON contract</b></summary>
@@ -117,12 +131,19 @@ A profile is an executable under `profiles/` or `SPHINCTERS_PROFILE_PATH`. It pr
 ```json
 {
   "version": 1,
-  "profile": {"name": "plain", "kind": "plain", "subject": "drone"},
-  "cwd": "/tmp/sphincters-run/cwd",
-  "system_prompt_file": "/tmp/sphincters-run/plain-system-prompt.md",
-  "identity": {"mode": "skip"},
-  "unset_env": ["GH_TOKEN", "GITHUB_TOKEN", "CHAT_IDENTITY"],
-  "meta": {"drone.profile": "plain"}
+  "profile": {"name": "desk", "kind": "workspace", "subject": "desk"},
+  "unset_env": [],
+  "env": {
+    "DESK_ROOT": "/tmp/desks/demo",
+    "DESKS_ROOT": "/tmp/desks/demo/.desks"
+  },
+  "meta": {"desk.id": "demo"},
+  "outputs": {
+    "desk_id": "demo",
+    "desk_root": "/tmp/desks/demo",
+    "desks_root": "/tmp/desks/demo/.desks"
+  },
+  "cleanup": {"strategy": "rm-rf", "path": "/tmp/desks/demo"}
 }
 ```
 
@@ -148,6 +169,8 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 ## Development
 
+Development pins `shiv:sessions = "0.4"`; interactive background desks need the persistent non-headless `sessions wake --message` semantics introduced in sessions v0.4.7.
+
 ```bash
 gh repo clone KnickKnackLabs/sphincters
 cd sphincters
@@ -165,6 +188,6 @@ This README is generated from `README.tsx`. The test count is computed when the 
 
 <div align="center">
 
-Related tools: [sessions](https://github.com/KnickKnackLabs/sessions) and [shiv](https://github.com/KnickKnackLabs/shiv).
+Related tools: [sessions](https://github.com/KnickKnackLabs/sessions), [desks](https://github.com/KnickKnackLabs/desks), and [shiv](https://github.com/KnickKnackLabs/shiv).
 
 </div>
