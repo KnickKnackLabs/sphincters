@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #MISE description="Run one bounded drone session and write logs/result JSON"
-#USAGE flag "--profile <profile>" default="plain" help="Launch profile (default: plain)"
+#USAGE flag "--profile <profile>" var=#true default="" help="Launch profile; repeatable, applied in CLI order (default: plain)"
 #USAGE flag "--model <model>" default="" help="Provider-qualified model; may also use SPHINCTERS_MODEL or SESSIONS_DEFAULT_MODEL"
 #USAGE flag "--prompt <text>" default="" help="Prompt text (required unless --prompt-file is given)"
 #USAGE flag "--prompt-file <file>" default="" help="Prompt file (overrides --prompt)"
-#USAGE flag "--cwd <dir>" default="" help="Working directory requested from the profile"
+#USAGE flag "--cwd <dir>" default="" help="Working directory requested from the composed profiles"
 #USAGE flag "--out-dir <dir>" default="" help="Directory for logs/results (default: /tmp/sphincters-run-*)"
 #USAGE flag "--name <name>" default="" help="Session name (default: generated unique name)"
 #USAGE flag "--result-file <file>" default="" help="Where to write result JSON (default: <out-dir>/<session>.result.json)"
@@ -15,16 +15,29 @@
 #USAGE example "mise run run --dry-run --model fake/model --prompt 'Say hello' --json" header="Prepare a run without launching a model"
 #USAGE example "mise run run --profile plain --model openai-codex/gpt-5.5 --prompt-file task.md" header="Run the default plain profile"
 #USAGE example "mise run run --profile sibling --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch a non-blocking sibling worker and print attach handles"
-#USAGE example "mise run run --profile sibling --interactive --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch an attachable interactive sibling desk"
+#USAGE example "mise run run --profile desk --profile sibling --interactive --background --model openai-codex/gpt-5.5 --prompt-file task.md --json" header="Launch an attachable sibling inside a desk"
 set -euo pipefail
 
 source "$MISE_CONFIG_ROOT/lib/drones.sh"
 
-profile="$usage_profile"
 model=$(drones_resolve_model "$usage_model")
 caller_pwd=$(drones_caller_pwd)
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-safe_profile=$(printf '%s' "$profile" | drones_safe_name)
+
+profiles=()
+if [ -n "${usage_profile:-}" ]; then
+  while IFS= read -r profile_arg; do
+    [ -n "$profile_arg" ] || continue
+    profiles+=("$profile_arg")
+  done < <(printf '%s' "$usage_profile" | xargs printf '%s\n')
+fi
+if [ "${#profiles[@]}" -eq 0 ]; then
+  profiles=(plain)
+fi
+
+profile_stack_label=$(drones_join_by "-" "${profiles[@]}")
+safe_profile=$(printf '%s' "$profile_stack_label" | drones_safe_name)
+[ -n "$safe_profile" ] || safe_profile="profile"
 base="sphincters-run-${safe_profile}-${stamp}-$$"
 out_dir_arg="${usage_out_dir:-/tmp/$base}"
 out_dir=$(drones_resolve_path "$out_dir_arg")
@@ -75,56 +88,98 @@ else
   exit 2
 fi
 
-DRONES_PROFILE_EXEC=""
-DRONES_PROFILE_SUFFIX=""
-drones_profile_executable "$profile"
+profile_context_file="$out_dir/$name.profile.context.json"
 profile_spec_file="$out_dir/$name.profile.json"
-if (
-  export SPHINCTERS_PROFILE="$profile"
-  export SPHINCTERS_PROFILE_SUFFIX="$DRONES_PROFILE_SUFFIX"
-  export SPHINCTERS_OUT_DIR="$out_dir"
-  export SPHINCTERS_CWD="$requested_cwd"
-  export SPHINCTERS_MODEL="$model"
-  export SPHINCTERS_CALLER_PWD="$caller_pwd"
-  # Backward-compatible aliases for older local profile experiments.
-  export DRONES_PROFILE="$SPHINCTERS_PROFILE"
-  export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
-  export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
-  export DRONES_CWD="$SPHINCTERS_CWD"
-  export DRONES_MODEL="$SPHINCTERS_MODEL"
-  export DRONES_CALLER_PWD="$SPHINCTERS_CALLER_PWD"
-  "$DRONES_PROFILE_EXEC"
-) > "$profile_spec_file"; then
-  :
+profile_spec_files_file="$out_dir/$name.profile-files.json"
+drones_write_initial_profile_context "$profile_context_file" "$requested_cwd"
+
+profile_spec_files=()
+profile_index=0
+profile_rc=0
+for profile in ${profiles[@]+"${profiles[@]}"}; do
+  DRONES_PROFILE_EXEC=""
+  DRONES_PROFILE_SUFFIX=""
+  drones_profile_executable "$profile"
+
+  safe_single_profile=$(printf '%s' "$profile" | drones_safe_name)
+  [ -n "$safe_single_profile" ] || safe_single_profile="profile"
+  single_profile_spec_file="$out_dir/$name.profile.$profile_index.$safe_single_profile.json"
+  next_context_file="$out_dir/$name.profile.context.$profile_index.next.json"
+
+  if (
+    export SPHINCTERS_PROFILE="$profile"
+    export SPHINCTERS_PROFILE_INDEX="$profile_index"
+    export SPHINCTERS_PROFILE_STACK="$profile_stack_label"
+    export SPHINCTERS_PROFILE_SUFFIX="$DRONES_PROFILE_SUFFIX"
+    export SPHINCTERS_CONTEXT_FILE="$profile_context_file"
+    export SPHINCTERS_OUT_DIR="$out_dir"
+    export SPHINCTERS_CWD="$requested_cwd"
+    export SPHINCTERS_MODEL="$model"
+    export SPHINCTERS_CALLER_PWD="$caller_pwd"
+    export SPHINCTERS_DRY_RUN="$usage_dry_run"
+    # Backward-compatible aliases for older local profile experiments.
+    export DRONES_PROFILE="$SPHINCTERS_PROFILE"
+    export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
+    export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
+    export DRONES_CWD="$SPHINCTERS_CWD"
+    export DRONES_MODEL="$SPHINCTERS_MODEL"
+    export DRONES_CALLER_PWD="$SPHINCTERS_CALLER_PWD"
+    "$DRONES_PROFILE_EXEC"
+  ) > "$single_profile_spec_file"; then
+    :
+  else
+    profile_rc=$?
+    echo "error: profile failed (rc=$profile_rc): $profile" >&2
+    exit "$profile_rc"
+  fi
+
+  if ! drones_validate_profile_spec_file "$single_profile_spec_file"; then
+    echo "error: profile emitted invalid launch spec: $single_profile_spec_file" >&2
+    exit 2
+  fi
+
+  if ! drones_compose_profile_context "$profile_context_file" "$single_profile_spec_file" "$next_context_file"; then
+    echo "error: profile composition failed after: $profile" >&2
+    exit 2
+  fi
+  mv "$next_context_file" "$profile_context_file"
+
+  profile_spec_files+=("$single_profile_spec_file")
+  profile_index=$((profile_index + 1))
+done
+
+if [ "${#profile_spec_files[@]}" -eq 0 ]; then
+  printf '[]\n' > "$profile_spec_files_file"
 else
-  profile_rc=$?
-  echo "error: profile failed (rc=$profile_rc): $profile" >&2
-  exit "$profile_rc"
+  printf '%s\n' "${profile_spec_files[@]}" | jq -R . | jq -s . > "$profile_spec_files_file"
 fi
 
-if ! jq -e '
-  .version == 1
-  and (.profile.name | type == "string")
-  and (.profile.kind | type == "string")
-  and (.profile.subject | type == "string")
-  and (.cwd | type == "string")
-  and ((.unset_env // []) | type == "array")
-  and ((.meta // {}) | type == "object")
-' "$profile_spec_file" >/dev/null; then
-  echo "error: profile emitted invalid launch spec: $profile_spec_file" >&2
+if ! drones_finalize_profile_context "$profile_context_file" "$profile_spec_file" "$caller_pwd" "$out_dir" "$caller_pwd" "$profile_spec_files_file"; then
+  echo "error: profile composition failed while finalizing" >&2
   exit 2
 fi
 
+if ! drones_validate_launch_spec_file "$profile_spec_file"; then
+  echo "error: composed profile emitted invalid launch spec: $profile_spec_file" >&2
+  exit 2
+fi
+
+profile_name=$(jq -r '.profile.name' "$profile_spec_file")
 profile_kind=$(jq -r '.profile.kind' "$profile_spec_file")
 profile_subject=$(jq -r '.profile.subject' "$profile_spec_file")
+profile_stack=$(jq -r '.profile_stack | join(",")' "$profile_spec_file")
 cwd=$(jq -r '.cwd' "$profile_spec_file")
 system_prompt_file=$(jq -r '.system_prompt_file // empty' "$profile_spec_file")
 if [ -z "$cwd" ]; then
-  echo "error: profile emitted empty cwd: $profile_spec_file" >&2
+  echo "error: composed profile emitted empty cwd: $profile_spec_file" >&2
   exit 2
 fi
 if [ -n "$system_prompt_file" ] && [ ! -f "$system_prompt_file" ]; then
   echo "error: profile system prompt file not found: $system_prompt_file" >&2
+  exit 2
+fi
+if [ -n "$system_prompt_file" ] && jq -e '.env // {} | has("AGENT_IDENTITY")' "$profile_spec_file" >/dev/null; then
+  echo "error: profile env conflicts with system_prompt_file: AGENT_IDENTITY" >&2
   exit 2
 fi
 
@@ -134,7 +189,6 @@ read_log="$out_dir/$name.read.log"
 transcript_file="$out_dir/$name.transcript.txt"
 started_at=$(drones_now_iso)
 
-profile_rc=0
 new_rc=-1
 wake_rc=-1
 read_rc=-1
@@ -161,12 +215,6 @@ else
   new_cmd=(
     "$sessions_bin" new "$name"
     --cwd "$cwd"
-    --meta "drone.tool=sphincters"
-    --meta "drone.profile=$profile"
-    --meta "drone.kind=$profile_kind"
-    --meta "drone.subject=$profile_subject"
-    --meta "drone.out_dir=$out_dir"
-    --meta "drone.caller_pwd=$caller_pwd"
   )
   while IFS=$'\t' read -r key value; do
     [ -n "$key" ] || continue
@@ -192,7 +240,8 @@ else
     fi
     wake_cmd+=(
       --meta "wake.purpose=sphincters-run"
-      --meta "drone.profile=$profile"
+      --meta "drone.profile=$profile_name"
+      --meta "drone.profiles=$profile_stack"
       --meta "drone.kind=$profile_kind"
     )
     if [ "$usage_background" = "true" ]; then
@@ -208,6 +257,15 @@ else
       fi
       env_cmd+=(-u "$env_name")
     done < <(jq -r '.unset_env[]?' "$profile_spec_file")
+
+    while IFS=$'\t' read -r env_name env_value; do
+      [ -n "$env_name" ] || continue
+      if ! drones_validate_env_name "$env_name"; then
+        echo "error: profile requested invalid env set: $env_name" >&2
+        exit 2
+      fi
+      env_cmd+=("$env_name=$env_value")
+    done < <(jq -r '.env // {} | to_entries[] | [.key, .value] | @tsv' "$profile_spec_file")
 
     if [ -n "$system_prompt_file" ]; then
       system_prompt=$(cat "$system_prompt_file")
@@ -280,6 +338,14 @@ jq -n \
     type: $type,
     session: $session,
     profile: $spec[0].profile,
+    profiles: $spec[0].profiles,
+    profile_stack: $spec[0].profile_stack,
+    profile_outputs: $spec[0].profile_outputs,
+    outputs: $spec[0].outputs,
+    cleanup: $spec[0].cleanup,
+    desk_root: ($spec[0].outputs.desk_root // null),
+    desks_root: ($spec[0].outputs.desks_root // null),
+    desk_id: ($spec[0].outputs.desk_id // null),
     model: $model,
     mode: $mode,
     dry_run: $dry_run,
@@ -288,6 +354,7 @@ jq -n \
     cwd: $cwd,
     out_dir: $out_dir,
     profile_spec_file: $profile_spec_file,
+    profile_spec_files: $spec[0].profile_spec_files,
     profile_spec: $spec[0],
     files: {
       prompt: $prompt_file,
@@ -326,7 +393,8 @@ if [ "$usage_json" = "true" ]; then
 else
   printf '%s\n' '== sphincters:run =='
   printf '  session:    %s\n' "$name"
-  printf '  profile:    %s (%s)\n' "$profile" "$profile_kind"
+  printf '  profile:    %s (%s)\n' "$profile_name" "$profile_kind"
+  printf '  stack:      %s\n' "$profile_stack"
   printf '  subject:    %s\n' "$profile_subject"
   printf '  model:      %s\n' "$model"
   printf '  mode:       %s\n' "$mode"

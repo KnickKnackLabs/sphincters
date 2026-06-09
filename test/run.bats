@@ -6,11 +6,18 @@ load test_helper
 
 make_mock_sessions() {
   export SPHINCTERS_SESSIONS_LOG="$BATS_TEST_TMPDIR/sessions.log"
+  export SPHINCTERS_SESSIONS_ENV_LOG="$BATS_TEST_TMPDIR/sessions.env.log"
   export SPHINCTERS_SESSIONS_BIN="$BATS_TEST_TMPDIR/sessions"
   cat > "$SPHINCTERS_SESSIONS_BIN" <<'SESSIONS'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${SPHINCTERS_SESSIONS_LOG:?}"
+if [ "${1:-}" = "wake" ]; then
+  {
+    printf 'DESK_ROOT=%s\n' "${DESK_ROOT:-}"
+    printf 'DESKS_ROOT=%s\n' "${DESKS_ROOT:-}"
+  } >> "${SPHINCTERS_SESSIONS_ENV_LOG:?}"
+fi
 case "${1:-}" in
   new|wake)
     exit 0
@@ -25,6 +32,47 @@ case "${1:-}" in
 esac
 SESSIONS
   chmod +x "$SPHINCTERS_SESSIONS_BIN"
+}
+
+make_mock_desks() {
+  export SPHINCTERS_MOCK_DESKS_ROOT="$BATS_TEST_TMPDIR/desks"
+  export SPHINCTERS_DESKS_LOG="$BATS_TEST_TMPDIR/desks.log"
+  export SPHINCTERS_DESKS_BIN="$BATS_TEST_TMPDIR/desks-bin"
+  cat > "$SPHINCTERS_DESKS_BIN" <<'DESKS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${SPHINCTERS_DESKS_LOG:?}"
+root_base="${SPHINCTERS_MOCK_DESKS_ROOT:?}"
+mkdir -p "$root_base"
+case "${1:-}" in
+  new)
+    if [ "${2:-}" = "--id" ]; then
+      id="${3:-}"
+    else
+      id="auto-desk"
+    fi
+    root="$root_base/$id"
+    if [ -e "$root" ]; then
+      echo "desk already exists: $id" >&2
+      exit 1
+    fi
+    mkdir -p "$root/.desk"
+    jq -n --arg id "$id" --arg root "$root" '{schema: 1, id: $id, root: $root}' > "$root/.desk/registry.json"
+    printf '%s\n' "$root"
+    ;;
+  path)
+    id="${2:-}"
+    root="$root_base/$id"
+    [ -f "$root/.desk/registry.json" ] || { echo "desk not found: $id" >&2; exit 1; }
+    printf '%s\n' "$root"
+    ;;
+  *)
+    echo "unexpected desks command: ${1:-}" >&2
+    exit 64
+    ;;
+esac
+DESKS
+  chmod +x "$SPHINCTERS_DESKS_BIN"
 }
 
 @test "run --dry-run writes result JSON" {
@@ -222,6 +270,117 @@ SESSIONS
 
   [ "$status" -eq 0 ]
   echo "$output" | jq -e --arg explicit "$explicit" '.cwd == $explicit' >/dev/null
+}
+
+@test "run composes repeated profiles in CLI order" {
+  out_dir="$BATS_TEST_TMPDIR/composed-run"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  mkdir -p "$caller"
+
+  export GIT_AUTHOR_NAME="baby-joel"
+  export SPHINCTERS_CALLER_PWD="$caller"
+  run sphincters run \
+    --dry-run \
+    --profile desk \
+    --profile sibling \
+    --model fake/model \
+    --prompt "watch the PR" \
+    --out-dir "$out_dir" \
+    --json
+  unset SPHINCTERS_CALLER_PWD
+  unset GIT_AUTHOR_NAME
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e \
+    --arg caller "$caller" \
+    --arg out_dir "$out_dir" \
+    '.profile.name == "desk+sibling"
+     and .profile.kind == "composed"
+     and .profile.subject == "sibling"
+     and .profiles[0].name == "desk"
+     and .profiles[1].name == "sibling"
+     and .profile_stack == ["desk", "sibling"]
+     and .cwd == $caller
+     and .outputs.desk_root == ($out_dir + "/dry-run-desk")
+     and .outputs.desks_root == ($out_dir + "/dry-run-desk/.desks")
+     and .profile_outputs.desk.desk_id == "dry-run-desk"
+     and .profile_outputs.sibling == {}
+     and .cleanup[0].profile == "desk"
+     and .profile_spec.env.DESK_ROOT == ($out_dir + "/dry-run-desk")
+     and .profile_spec.env.DESKS_ROOT == ($out_dir + "/dry-run-desk/.desks")' \
+    >/dev/null
+}
+
+@test "desk profile injects desk env into launched wake" {
+  make_mock_sessions
+  make_mock_desks
+  out_dir="$BATS_TEST_TMPDIR/desk-launch"
+  caller="$BATS_TEST_TMPDIR/caller-workspace"
+  mkdir -p "$caller"
+
+  export GIT_AUTHOR_NAME="baby-joel"
+  export SPHINCTERS_CALLER_PWD="$caller"
+  export SPHINCTERS_DESK_ID="desk-a"
+  run sphincters run \
+    --profile desk \
+    --profile sibling \
+    --interactive \
+    --background \
+    --model fake/model \
+    --prompt "hello" \
+    --out-dir "$out_dir" \
+    --name desk-sibling \
+    --json
+  unset SPHINCTERS_DESK_ID
+  unset SPHINCTERS_CALLER_PWD
+  unset GIT_AUTHOR_NAME
+
+  [ "$status" -eq 0 ]
+  desk_root="$SPHINCTERS_MOCK_DESKS_ROOT/desk-a"
+  echo "$output" | jq -e \
+    --arg caller "$caller" \
+    --arg desk_root "$desk_root" \
+    '.profile_stack == ["desk", "sibling"]
+     and .cwd == $caller
+     and .desk_root == $desk_root
+     and .desks_root == ($desk_root + "/.desks")
+     and .desk_id == "desk-a"
+     and .profile_outputs.desk.created == true' \
+    >/dev/null
+
+  [ "$(cat "$SPHINCTERS_DESKS_LOG")" = "new --id desk-a" ]
+  grep -Fx "DESK_ROOT=$desk_root" "$SPHINCTERS_SESSIONS_ENV_LOG"
+  grep -Fx "DESKS_ROOT=$desk_root/.desks" "$SPHINCTERS_SESSIONS_ENV_LOG"
+}
+
+@test "desk profile dry-run rejects unsafe desk ids" {
+  export SPHINCTERS_DESK_ID="../bad"
+  run sphincters run --dry-run --profile desk --model fake/model --prompt "hello" --json
+  unset SPHINCTERS_DESK_ID
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"invalid desk id: ../bad"* ]]
+}
+
+@test "profile composition rejects env conflicts" {
+  profile_dir="$BATS_TEST_TMPDIR/conflict-profiles"
+  mkdir -p "$profile_dir"
+  cat > "$profile_dir/a" <<'PROFILE'
+#!/usr/bin/env bash
+jq -n '{version: 1, profile: {name: "a", kind: "test", subject: "a"}, env: {CONFLICT: "one"}}'
+PROFILE
+  cat > "$profile_dir/b" <<'PROFILE'
+#!/usr/bin/env bash
+jq -n '{version: 1, profile: {name: "b", kind: "test", subject: "b"}, env: {CONFLICT: "two"}}'
+PROFILE
+  chmod +x "$profile_dir/a" "$profile_dir/b"
+
+  export SPHINCTERS_PROFILE_PATH="$profile_dir"
+  run sphincters run --dry-run --profile a --profile b --model fake/model --prompt "hello" --json
+  unset SPHINCTERS_PROFILE_PATH
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"profile conflict for env.CONFLICT"* ]]
 }
 
 @test "run can use an external profile from SPHINCTERS_PROFILE_PATH" {

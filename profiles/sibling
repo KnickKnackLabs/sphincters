@@ -59,10 +59,9 @@ jq -n \
     system_prompt_file: $system_prompt_file,
     identity: {mode: "inherit", agent: $agent_name},
     unset_env: [],
+    env: {},
     meta: {
-      "drone.profile": $profile,
-      "drone.kind": "agent",
-      "drone.subject": "sibling",
       "agent.name": $agent_name
-    }
+    },
+    outputs: {}
   }'

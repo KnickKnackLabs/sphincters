@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# Emit launch spec for a desk workspace decorator profile.
+set -euo pipefail
+
+out_dir="${SPHINCTERS_OUT_DIR:-${DRONES_OUT_DIR:-}}"
+if [ -z "$out_dir" ]; then
+  echo "error: SPHINCTERS_OUT_DIR required" >&2
+  exit 2
+fi
+
+profile="${SPHINCTERS_PROFILE:-${DRONES_PROFILE:-desk}}"
+profile_suffix="${SPHINCTERS_PROFILE_SUFFIX:-${DRONES_PROFILE_SUFFIX:-}}"
+dry_run="${SPHINCTERS_DRY_RUN:-false}"
+desk_id="${SPHINCTERS_DESK_ID:-}"
+if [ -z "$desk_id" ] && [ -n "$profile_suffix" ]; then
+  desk_id="$profile_suffix"
+fi
+
+profile_log="$out_dir/desk-profile.log"
+created=false
+
+validate_desk_id() {
+  local id="$1"
+  if [ -z "$id" ] || ! [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "error: invalid desk id: $id" >&2
+    exit 2
+  fi
+}
+
+if [ "$dry_run" = "true" ]; then
+  if [ -z "$desk_id" ]; then
+    desk_id="dry-run-desk"
+  fi
+  validate_desk_id "$desk_id"
+  desk_root="$out_dir/$desk_id"
+  mkdir -p "$desk_root/.desk" "$desk_root/.desks"
+  jq -n \
+    --arg id "$desk_id" \
+    --arg root "$desk_root" \
+    --arg created_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    '{schema: 1, id: $id, root: $root, created_at: $created_at, dry_run: true}' \
+    > "$desk_root/.desk/registry.json"
+else
+  desks_bin="${SPHINCTERS_DESKS_BIN:-desks}"
+  if [ -n "$desk_id" ]; then
+    if desk_root=$("$desks_bin" new --id "$desk_id" 2>"$profile_log"); then
+      created=true
+    elif desk_root=$("$desks_bin" path "$desk_id" 2>>"$profile_log"); then
+      created=false
+    else
+      cat "$profile_log" >&2
+      exit 1
+    fi
+  else
+    if desk_root=$("$desks_bin" new 2>"$profile_log"); then
+      created=true
+      desk_id="${desk_root##*/}"
+    else
+      cat "$profile_log" >&2
+      exit 1
+    fi
+  fi
+  mkdir -p "$desk_root/.desks"
+fi
+
+desks_root="$desk_root/.desks"
+
+jq -n \
+  --arg profile "$profile" \
+  --arg desk_id "$desk_id" \
+  --arg desk_root "$desk_root" \
+  --arg desks_root "$desks_root" \
+  --argjson created "$created" \
+  '{
+    version: 1,
+    profile: {name: $profile, kind: "workspace", subject: "desk"},
+    unset_env: [],
+    env: {
+      DESK_ROOT: $desk_root,
+      DESKS_ROOT: $desks_root
+    },
+    meta: {
+      "desk.id": $desk_id,
+      "desk.root": $desk_root,
+      "desk.desks_root": $desks_root
+    },
+    outputs: {
+      desk_id: $desk_id,
+      desk_root: $desk_root,
+      desks_root: $desks_root,
+      created: $created
+    },
+    cleanup: {
+      strategy: "rm-rf",
+      path: $desk_root,
+      owns_path: $created,
+      hint: "Remove the desk root after harvesting if this run owns it."
+    }
+  }'

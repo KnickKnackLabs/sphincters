@@ -29,38 +29,47 @@ const boundaryDiagram = [
   "                       │",
   "                       ▼",
   "             ┌──────────────────┐",
-  "             │ launch profile   │  cwd / system prompt / env scrub / meta",
+  "             │ profile stack    │  CLI order: desk → sibling",
   "             └─────────┬────────┘",
-  "                       │ profile.json",
+  "                       │ composed profile.json",
   "                       ▼",
   "  prompt.md ──▶ sessions new ──▶ sessions wake [--headless] ──▶ sessions read",
   "                       │                    │                       │",
   "                       │                    │                       └─ skipped with --background",
   "                       └────────────────────┴───────────────────────┘",
   "                                            ▼",
-  "          logs + transcript/result JSON + optional attach handles",
+  "      logs + transcript/result JSON + profile outputs + attach handles",
 ].join("\n");
 
 const artifactTree = [
   "exports/first-run/",
-  "├── sphincters-run-plain-...prompt.md",
-  "├── sphincters-run-plain-...profile.json",
-  "├── plain-system-prompt.md",
-  "├── sphincters-run-plain-...new.log",
-  "├── sphincters-run-plain-...wake.log",
-  "├── sphincters-run-plain-...read.log",
-  "├── sphincters-run-plain-...transcript.txt",
-  "└── sphincters-run-plain-...result.json",
+  "├── sphincters-run-desk-sibling-...prompt.md",
+  "├── sphincters-run-desk-sibling-...profile.0.desk.json",
+  "├── sphincters-run-desk-sibling-...profile.1.sibling.json",
+  "├── sphincters-run-desk-sibling-...profile.json",
+  "├── sibling-system-prompt.md",
+  "├── sphincters-run-desk-sibling-...new.log",
+  "├── sphincters-run-desk-sibling-...wake.log",
+  "├── sphincters-run-desk-sibling-...read.log",
+  "├── sphincters-run-desk-sibling-...transcript.txt",
+  "└── sphincters-run-desk-sibling-...result.json",
 ].join("\n");
 
 const profileJson = `{
   "version": 1,
-  "profile": {"name": "plain", "kind": "plain", "subject": "drone"},
-  "cwd": "/tmp/sphincters-run/cwd",
-  "system_prompt_file": "/tmp/sphincters-run/plain-system-prompt.md",
-  "identity": {"mode": "skip"},
-  "unset_env": ["GH_TOKEN", "GITHUB_TOKEN", "CHAT_IDENTITY"],
-  "meta": {"drone.profile": "plain"}
+  "profile": {"name": "desk", "kind": "workspace", "subject": "desk"},
+  "unset_env": [],
+  "env": {
+    "DESK_ROOT": "/tmp/desks/demo",
+    "DESKS_ROOT": "/tmp/desks/demo/.desks"
+  },
+  "meta": {"desk.id": "demo"},
+  "outputs": {
+    "desk_id": "demo",
+    "desk_root": "/tmp/desks/demo",
+    "desks_root": "/tmp/desks/demo/.desks"
+  },
+  "cleanup": {"strategy": "rm-rf", "path": "/tmp/desks/demo"}
 }`;
 
 const readme = (
@@ -123,6 +132,16 @@ sphincters run \\
   --prompt-file handoff.md \\
   --json
 
+# Compose workspace + identity decorators in deterministic CLI order
+sphincters run \\
+  --profile desk \\
+  --profile sibling \\
+  --interactive \\
+  --background \\
+  --model openai-codex/gpt-5.5 \\
+  --prompt-file handoff.md \\
+  --json
+
 # Run repeated smoke checks
 sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</CodeBlock>
     </Section>
@@ -146,10 +165,10 @@ sphincters bench --model openai-codex/gpt-5.5 --count 3 --parallel 1 --json`}</C
       <CodeBlock>{boundaryDiagram}</CodeBlock>
 
       <Paragraph>
-        The core abstraction is worker/profile/session. A profile can describe
-        a plain model call today and can later describe an agent identity,
-        long-running process, or re-wake policy without changing the runner's
-        record format.
+        The core abstraction is worker/profile/session. Profiles are applied in
+        the order supplied on the CLI and contribute to one shared launch
+        context. The runner launches exactly once from that composed context and
+        records both the profile stack and each profile's outputs.
       </Paragraph>
     </Section>
 
@@ -193,12 +212,21 @@ Foreground interactive mode fails loudly without a TTY. Agents should normally u
       <Paragraph>
         A profile is an executable under <Code>profiles/</Code> or{" "}
         <Code>SPHINCTERS_PROFILE_PATH</Code>. It prepares launch context and
-        prints a JSON spec. The built-in <Code>plain</Code> profile creates a
-        stateless system prompt and scrubs ambient identity and common
-        side-effect credentials before waking. The built-in <Code>sibling</Code>{" "}
-        profile preserves inherited agent identity, defaults to the caller cwd,
-        and frames the launched session as same-agent sibling/continuation work
-        rather than a subordinate worker.
+        prints a JSON spec. <Code>plain</Code> creates a stateless system prompt
+        and scrubs ambient identity. <Code>desk</Code> creates or selects a desk,
+        injects <Code>DESK_ROOT</Code> and <Code>DESKS_ROOT</Code>, and records
+        cleanup hints. <Code>sibling</Code> preserves inherited agent identity,
+        defaults to the caller cwd, and frames the launched session as
+        same-agent sibling/continuation work rather than a subordinate worker.
+      </Paragraph>
+
+      <Paragraph>
+        Composition is deterministic: <Code>--profile desk --profile sibling</Code>{" "}
+        applies <Code>desk</Code> first and <Code>sibling</Code> second. Important
+        fields such as cwd, identity, env keys, metadata, and outputs fail on
+        conflicting writes instead of silently taking the last value. The desk
+        profile uses the repo-pinned <Code>desks</Code> tool by default; set{" "}
+        <Code>SPHINCTERS_DESKS_BIN</Code> to point at a stub or alternate binary.
       </Paragraph>
 
       <Details summary="Profile JSON contract">
@@ -278,7 +306,9 @@ mise exec -- readme build --check`}</CodeBlock>
     <Center>
       <Paragraph>
         Related tools: <Link href="https://github.com/KnickKnackLabs/sessions">sessions</Link>
-        {" and "}
+        {", "}
+        <Link href="https://github.com/KnickKnackLabs/desks">desks</Link>
+        {", and "}
         <Link href="https://github.com/KnickKnackLabs/shiv">shiv</Link>.
       </Paragraph>
     </Center>
