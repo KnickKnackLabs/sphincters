@@ -12,8 +12,8 @@ jq = "1.8.1"
 usage = "1"
 "shiv:codebase" = "0.3"
 "shiv:readme" = "0.3"
-# Track latest sessions while its system-prompt handoff surface is still moving.
-"shiv:sessions" = "latest"
+# Needs sessions >= v0.4.7 for persistent non-headless wake --message.
+"shiv:sessions" = "0.4"
 
 [_.codebase]
 lint = [

@@ -252,6 +252,12 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
     </Section>
 
     <Section title="Development">
+      <Paragraph>
+        Development pins <Code>shiv:sessions = "0.4"</Code>; interactive background
+        desks need the persistent non-headless <Code>sessions wake --message</Code>
+        {" semantics introduced in sessions v0.4.7."}
+      </Paragraph>
+
       <CodeBlock lang="bash">{`gh repo clone KnickKnackLabs/sphincters
 cd sphincters
 mise trust

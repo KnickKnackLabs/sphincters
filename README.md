@@ -148,6 +148,8 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 ## Development
 
+Development pins `shiv:sessions = "0.4"`; interactive background desks need the persistent non-headless `sessions wake --message` semantics introduced in sessions v0.4.7.
+
 ```bash
 gh repo clone KnickKnackLabs/sphincters
 cd sphincters
