@@ -117,13 +117,6 @@ for profile in ${profiles[@]+"${profiles[@]}"}; do
     export SPHINCTERS_MODEL="$model"
     export SPHINCTERS_CALLER_PWD="$caller_pwd"
     export SPHINCTERS_DRY_RUN="$usage_dry_run"
-    # Backward-compatible aliases for older local profile experiments.
-    export DRONES_PROFILE="$SPHINCTERS_PROFILE"
-    export DRONES_PROFILE_SUFFIX="$SPHINCTERS_PROFILE_SUFFIX"
-    export DRONES_OUT_DIR="$SPHINCTERS_OUT_DIR"
-    export DRONES_CWD="$SPHINCTERS_CWD"
-    export DRONES_MODEL="$SPHINCTERS_MODEL"
-    export DRONES_CALLER_PWD="$SPHINCTERS_CALLER_PWD"
     "$DRONES_PROFILE_EXEC"
   ) > "$single_profile_spec_file"; then
     :
