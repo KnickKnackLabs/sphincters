@@ -7,7 +7,7 @@ DRONES_REPO_DIR="$(cd "$DRONES_LIB_DIR/.." && pwd)"
 # Paths passed to an installed shiv package are caller-relative. Direct mise
 # runs fall back to the current shell's PWD.
 drones_caller_pwd() {
-  printf '%s\n' "${SPHINCTERS_CALLER_PWD:-${DRONES_CALLER_PWD:-$PWD}}"
+  printf '%s\n' "${SPHINCTERS_CALLER_PWD:-${CALLER_PWD:-$PWD}}"
 }
 
 drones_resolve_path() {

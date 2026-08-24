@@ -35,7 +35,7 @@ if [ "${#profiles[@]}" -eq 0 ]; then
   profiles=(plain)
 fi
 
-profile_stack_label=$(drones_join_by "-" "${profiles[@]}")
+profile_stack_label=$(drones_join_by "-" ${profiles[@]+"${profiles[@]}"})
 safe_profile=$(printf '%s' "$profile_stack_label" | drones_safe_name)
 [ -n "$safe_profile" ] || safe_profile="profile"
 base="sphincters-run-${safe_profile}-${stamp}-$$"
@@ -144,7 +144,7 @@ done
 if [ "${#profile_spec_files[@]}" -eq 0 ]; then
   printf '[]\n' > "$profile_spec_files_file"
 else
-  printf '%s\n' "${profile_spec_files[@]}" | jq -R . | jq -s . > "$profile_spec_files_file"
+  printf '%s\n' ${profile_spec_files[@]+"${profile_spec_files[@]}"} | jq -R . | jq -s . > "$profile_spec_files_file"
 fi
 
 if ! drones_finalize_profile_context "$profile_context_file" "$profile_spec_file" "$caller_pwd" "$out_dir" "$caller_pwd" "$profile_spec_files_file"; then
@@ -214,7 +214,7 @@ else
     new_cmd+=(--meta "$key=$value")
   done < <(jq -r '.meta // {} | to_entries[] | [.key, (.value | tostring)] | @tsv' "$profile_spec_file")
 
-  if "${new_cmd[@]}" >"$new_log" 2>&1; then
+  if ${new_cmd[@]+"${new_cmd[@]}"} >"$new_log" 2>&1; then
     new_rc=0
   else
     new_rc=$?
@@ -267,7 +267,7 @@ else
       system_prompt=""
     fi
 
-    if "${env_cmd[@]}" "${wake_cmd[@]}" >"$wake_log" 2>&1; then
+    if ${env_cmd[@]+"${env_cmd[@]}"} ${wake_cmd[@]+"${wake_cmd[@]}"} >"$wake_log" 2>&1; then
       wake_rc=0
     else
       wake_rc=$?

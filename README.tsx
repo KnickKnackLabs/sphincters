@@ -283,7 +283,9 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
       <Paragraph>
         Development pins <Code>shiv:sessions = "0.4"</Code>; interactive background
         desks need the persistent non-headless <Code>sessions wake --message</Code>
-        {" semantics introduced in sessions v0.4.7."}
+        {" semantics introduced in sessions v0.4.7. Tests use KKL BATS and Rush with a four-job default across and within files. Fixtures isolate mutable state per test; use "}
+        <Code>--jobs 1</Code>
+        {" for serial debugging."}
       </Paragraph>
 
       <CodeBlock lang="bash">{`gh repo clone KnickKnackLabs/sphincters
@@ -292,6 +294,8 @@ mise trust
 mise install
 
 mise run test
+mise run test run
+mise run test --jobs 1
 mise run lint
 mise exec -- readme build --check`}</CodeBlock>
 

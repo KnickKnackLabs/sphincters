@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 24 passing](https://img.shields.io/badge/tests-24%20passing-brightgreen?style=flat)](test/)
+[![tests: 29 passing](https://img.shields.io/badge/tests-29%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
@@ -169,7 +169,7 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 ## Development
 
-Development pins `shiv:sessions = "0.4"`; interactive background desks need the persistent non-headless `sessions wake --message` semantics introduced in sessions v0.4.7.
+Development pins `shiv:sessions = "0.4"`; interactive background desks need the persistent non-headless `sessions wake --message` semantics introduced in sessions v0.4.7. Tests use KKL BATS and Rush with a four-job default across and within files. Fixtures isolate mutable state per test; use `--jobs 1` for serial debugging.
 
 ```bash
 gh repo clone KnickKnackLabs/sphincters
@@ -178,6 +178,8 @@ mise trust
 mise install
 
 mise run test
+mise run test run
+mise run test --jobs 1
 mise run lint
 mise exec -- readme build --check
 ```
