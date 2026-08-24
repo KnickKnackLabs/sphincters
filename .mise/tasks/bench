@@ -165,7 +165,7 @@ jq -s \
      failed: ($failed | length),
      ms: {bench: $bench_ms, ping_total: stats(map(.ms.total) | sort)},
      pings: map({session, result_file, run_result_file, ack_ok, rc, total_ms: .ms.total})
-   }' "${result_files[@]}" > "$summary_file"
+   }' ${result_files[@]+"${result_files[@]}"} > "$summary_file"
 
 if [ "$usage_json" = "true" ]; then
   cat "$summary_file"
