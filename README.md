@@ -9,7 +9,7 @@
 `sphincters` wraps session launch patterns in a small, profile-driven interface. It records prompts, profile specs, logs, transcripts, and result JSON so a parent process can inspect the run later.
 
 ![lang: bash](https://img.shields.io/badge/lang-bash-4EAA25?style=flat&logo=gnubash&logoColor=white)
-[![tests: 29 passing](https://img.shields.io/badge/tests-29%20passing-brightgreen?style=flat)](test/)
+[![tests: 30 passing](https://img.shields.io/badge/tests-30%20passing-brightgreen?style=flat)](test/)
 ![workers: 3 commands](https://img.shields.io/badge/workers-3%20commands-blue?style=flat)
 ![install: shiv](https://img.shields.io/badge/install-shiv-orange?style=flat)
 
