@@ -178,7 +178,7 @@ mise trust
 mise install
 
 mise run test
-mise run test run
+mise run test test/run.bats
 mise run test --jobs 1
 mise run lint
 mise exec -- readme build --check
